@@ -158,7 +158,7 @@ class LitBaseModule(LightningModule):
             if self.matmul_precision is not None:
                 th.set_float32_matmul_precision(self.matmul_precision)
 
-    ################ Code to set start epoch and step to continue training ################
+    # Code to set start epoch and step to continue training ################
     @override
     def on_train_start(self) -> None:
         if self.continue_epoch is not None or self.continue_step is not None:

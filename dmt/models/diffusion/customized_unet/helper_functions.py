@@ -27,7 +27,7 @@ def resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks):
 
         assert not (
             down_idx == 0 and res_idx == 0
-        ), f"Do not remove in the first block the first layer"
+        ), "Do not remove in the first block the first layer"
         if res_idx == 0:
             down_idx -= 1
             res_idx = 1
@@ -70,7 +70,7 @@ def replace_blocks_in_unet(unet, config_json):
 def remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks):
     assert len(remove_downsample_blocks) == len(
         remove_resnet_blocks
-    ), f"Number of downsample_blocks and resnet_blocks must be equal"
+    ), "Number of downsample_blocks and resnet_blocks must be equal"
 
     for i in range(len(remove_downsample_blocks)):
         down_block_num = remove_downsample_blocks[i]

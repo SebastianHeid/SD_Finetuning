@@ -143,4 +143,4 @@ generate the scores in the thesis and are presented in the thesis.
 
 
 
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python train.py data=laion experiment=base_experiment +logger.wandb.name=test
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1,3 python train.py data=laion experiment=exp_e_d_2_r_1 

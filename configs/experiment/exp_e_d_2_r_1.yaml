@@ -1,0 +1,11 @@
+defaults:
+  - base_experiment
+
+task_name: exp_e_d_2_r_1
+
+model:
+  unet:
+    custome_unet_flag: True
+    config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
+    remove_downsample_blocks: [1] 
+    remove_resnet_blocks: [1]

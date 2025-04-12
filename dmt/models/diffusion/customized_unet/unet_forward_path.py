@@ -32,13 +32,16 @@ def downsample(
                 encoder_attention_mask=None,
                 **additional_residuals,
             )
+            res_outputs += (res_out,)
         else:
             sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+            res_outputs += (res_samples,)
         down_block_res_samples += res_samples
-        res_outputs += (res_out,)
+
         if is_multiscale and blk_ind <= 1:
             feat_list.append(sample)
     # return sample, down_block_res_samples, res_outputs
+    print(len(res_outputs))
     return sample, down_block_res_samples
 
 

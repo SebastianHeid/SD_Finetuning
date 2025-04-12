@@ -13,11 +13,11 @@ from dmt.utils.eval.sample import sample_images
 
 
 def _save_metric(
-        metric: str,
-        metric_value: float,
-        metrics_dir: str,
-        mode: str,
-        step: Optional[int] = None
+    metric: str,
+    metric_value: float,
+    metrics_dir: str,
+    mode: str,
+    step: Optional[int] = None,
 ) -> None:
     """Write a calculated metric to a csv file.
 
@@ -30,12 +30,18 @@ def _save_metric(
     metric_file = os.path.join(metrics_dir, f"{metric}_{mode}.csv")
     file_exists = os.path.exists(metric_file) and os.path.getsize(metric_file) > 0
     with open(metric_file, "a", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=["step", metric] if step is not None else [metric])
+        writer = csv.DictWriter(
+            csvfile, fieldnames=["step", metric] if step is not None else [metric]
+        )
 
         if not file_exists:
             writer.writeheader()
 
-        writer.writerow({"step": step, metric: metric_value} if step is not None else {metric: metric_value})
+        writer.writerow(
+            {"step": step, metric: metric_value}
+            if step is not None
+            else {metric: metric_value}
+        )
 
 
 @th.inference_mode()
@@ -76,9 +82,14 @@ def calculate_metrics(
     if not cond and not uncond and not cfg:
         return
 
-    reference_imgs_dir = os.path.join(trainer.datamodule.dataset_dir, "images", split)
+    # reference_imgs_dir = os.path.join(trainer.datamodule.dataset_dir, "images", split)
+    reference_imgs_dir = "/export/data/vislearn/rother_subgroup/sheid/laion_val/"
     metrics_dir = os.path.join(trainer.default_root_dir, "eval", split, "metrics")
-    samples_dir = os.path.join(metrics_dir, "samples", f"step_{str(step)}") if step is not None else os.path.join(metrics_dir, "samples")
+    samples_dir = (
+        os.path.join(metrics_dir, "samples", f"step_{str(step)}")
+        if step is not None
+        else os.path.join(metrics_dir, "samples")
+    )
 
     if num_images is None:
         num_images = len(os.listdir(reference_imgs_dir))
@@ -100,8 +111,13 @@ def calculate_metrics(
         save_wandb=False,
         save_local=True,
         num_steps=50,
-        num_batches=num_images // trainer.datamodule.batch_size,
-        batch_size=trainer.datamodule.batch_size if sampling_batch_size is None else sampling_batch_size,
+        # num_batches=num_images // trainer.datamodule.batch_size,
+        num_batches=4,
+        batch_size=(
+            trainer.datamodule.batch_size
+            if sampling_batch_size is None
+            else sampling_batch_size
+        ),
         modes=modes,
         split=split,
         shuffle=False,
@@ -116,7 +132,7 @@ def calculate_metrics(
                 os.path.join(samples_dir, mode),
                 mode="clean",
                 batch_size=metric_batch_size,
-                device=lit_module.device
+                device=lit_module.device,
             )
 
             if log_wandb and isinstance(trainer.logger, WandbLogger):
@@ -130,7 +146,7 @@ def calculate_metrics(
                 os.path.join(samples_dir, mode),
                 mode="clean",
                 batch_size=metric_batch_size,
-                device=lit_module.device
+                device=lit_module.device,
             )
 
             if log_wandb and isinstance(trainer.logger, WandbLogger):

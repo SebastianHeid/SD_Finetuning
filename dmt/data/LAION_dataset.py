@@ -16,14 +16,16 @@ class LAIONDataset(Dataset):
         if split == "val" or split == "test":
             self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")[:100]
         else:
-            self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")[:100]
+            self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")
         self.prompts = dict()
 
         print("Load prompts ...")
         self.prompts_emb = {
             img_name: torch.load(
                 os.path.join(dataset_dir + "/" + split + "/txt_embs/" + img_name)
-            )["encoder_hidden_states"].float()
+            )["encoder_hidden_states"]
+            .float()
+            .detach()
             for img_name in tqdm(self.img_names)
         }
 
@@ -31,7 +33,9 @@ class LAIONDataset(Dataset):
         self.latents = {
             img_name: torch.load(
                 os.path.join(dataset_dir + "/" + split + "/latents/" + img_name)
-            ).float()
+            )
+            .float()
+            .detach()
             for img_name in tqdm(self.img_names)
         }
 

@@ -1,0 +1,21 @@
+defaults:
+  - default
+
+
+dataset_dir: "/export/data/vislearn/rother_subgroup/sheid/SD/LAION_SD21"
+
+train_dataset:
+  _target_: dmt.data.LAION_dataset.LAIONDataset
+  dataset_dir: ${data.dataset_dir}
+  split: "train"
+
+val_dataset:
+  _target_: dmt.data.LAION_dataset.LAIONDataset
+  dataset_dir: ${data.dataset_dir}
+  split: "val"
+
+test_dataset:
+  _target_: dmt.data.LAION_dataset.LAIONDataset
+  dataset_dir: ${data.dataset_dir}
+  split: "test"
+

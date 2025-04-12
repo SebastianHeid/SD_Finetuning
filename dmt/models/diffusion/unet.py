@@ -1,13 +1,24 @@
 import random
-from typing import Any, Dict, Union, Optional, List, Tuple
+import sys
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch as th
 import torch.nn as nn
 from diffusers.models import UNet2DConditionModel, UNetControlNetXSModel
-from peft import LoraConfig, get_peft_model, PeftModel
+from peft import LoraConfig, PeftModel, get_peft_model
 from safetensors.torch import load_model
 
 from dmt.utils import RankedLogger, encode_prompt
+
+sys.path.append("/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet")
+from dmt.models.diffusion.customized_unet.customed_unet import (
+    ModifiedUNet2DConditionModel,
+)
+from dmt.models.diffusion.customized_unet.helper_functions import (
+    remove_resnet_layers,
+    replace_blocks_in_unet,
+    resnets_set_weights,
+)
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -20,15 +31,15 @@ class UNetWrapper(nn.Module):
     """
 
     def __init__(
-            self,
-            unet: Union[PeftModel, UNet2DConditionModel, UNetControlNetXSModel],
-            model_name: str,
-            cond_mechanism: str,
-            cond_key: str = "pixel_values",
-            cn_cond_scale: float = 1.0,
-            cn_dropout: float = 0.0,
-            txt_dropout: float = 0.0,
-            zero_txt_emb: Optional[th.Tensor] = None,
+        self,
+        unet: Union[PeftModel, UNet2DConditionModel, UNetControlNetXSModel],
+        model_name: str,
+        cond_mechanism: str,
+        cond_key: str = "pixel_values",
+        cn_cond_scale: float = 1.0,
+        cn_dropout: float = 0.0,
+        txt_dropout: float = 0.0,
+        zero_txt_emb: Optional[th.Tensor] = None,
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -51,7 +62,9 @@ class UNetWrapper(nn.Module):
         self.txt_dropout = txt_dropout
         self.zero_txt_emb = zero_txt_emb
 
-    def do_cn_dropout(self, cond: th.Tensor, dropout_overwrite: Optional[float] = None) -> Optional[th.Tensor]:
+    def do_cn_dropout(
+        self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
+    ) -> Optional[th.Tensor]:
         """Drops out (replaces with 0s) the control with a certain probability.
 
         :param cond: The conditioning tensor (e.g. depth map).
@@ -63,15 +76,15 @@ class UNetWrapper(nn.Module):
             return None
 
         dropout = self.cn_dropout if dropout_overwrite is None else dropout_overwrite
-        if dropout > 0.0 and random.uniform(0., 1.) <= dropout:
+        if dropout > 0.0 and random.uniform(0.0, 1.0) <= dropout:
             return th.zeros_like(cond).to(self.unet.dtype)
         return cond.to(self.unet.dtype)
 
     def do_txt_dropout(
-            self,
-            txt_emb,
-            txt_emb_2: Optional[th.Tensor] = None,
-            dropout_overwrite: Optional[float] = None
+        self,
+        txt_emb,
+        txt_emb_2: Optional[th.Tensor] = None,
+        dropout_overwrite: Optional[float] = None,
     ) -> Union[Tuple[th.Tensor, bool], Tuple[th.Tensor, th.Tensor, bool]]:
         """Drop out the text conditioning to train with Classifier-free guidance according to a probability.
         For SD 1.5 and 2.1 returns the encoded empty string "", for SDXL returns 0s (as with original SD).
@@ -83,13 +96,18 @@ class UNetWrapper(nn.Module):
             out. Otherwise, return original encodings. The bool in the output specifies if the text was dropped out.
         """
         dropout = self.txt_dropout if dropout_overwrite is None else dropout_overwrite
-        if dropout > 0.0 and random.uniform(0., 1.) <= dropout:
+        if dropout > 0.0 and random.uniform(0.0, 1.0) <= dropout:
             if "xl" in self.model_name:
                 assert txt_emb_2 is not None
                 return th.zeros_like(txt_emb), th.zeros_like(txt_emb_2), True
             else:
                 assert self.zero_txt_emb is not None
-                return self.zero_txt_emb.clone().to(txt_emb.device).repeat(txt_emb.shape[0], 1, 1), True
+                return (
+                    self.zero_txt_emb.clone()
+                    .to(txt_emb.device)
+                    .repeat(txt_emb.shape[0], 1, 1),
+                    True,
+                )
         if txt_emb_2 is None:
             return txt_emb, False
         else:
@@ -130,9 +148,16 @@ class UNetWrapper(nn.Module):
         # Model forward
         if "xl" not in self.model_name:
             # SD1.5 and SD2.1
-            prompt_emb = batch["prompt_emb"] if "prompt_emb" in batch \
-                else self.zero_txt_emb.clone().to(noisy_latent.device).repeat(noisy_latent.shape[0], 1, 1)
-            prompt_emb, dropped_out = self.do_txt_dropout(prompt_emb, dropout_overwrite=txt_dropout)
+            prompt_emb = (
+                batch["prompt_emb"]
+                if "prompt_emb" in batch
+                else self.zero_txt_emb.clone()
+                .to(noisy_latent.device)
+                .repeat(noisy_latent.shape[0], 1, 1)
+            )
+            prompt_emb, dropped_out = self.do_txt_dropout(
+                prompt_emb, dropout_overwrite=txt_dropout
+            )
             prompt_emb = prompt_emb.to(noisy_latent.dtype)
 
             # Test if model uses masked cross attention
@@ -146,9 +171,16 @@ class UNetWrapper(nn.Module):
                     cross_attn_mask = batch["cross_attn_mask"]
                     lat_h, lat_w = noisy_latent.shape[2], noisy_latent.shape[3]
                     for i in range(len(cross_attn_prompts)):
-                        for size in ((lat_h, lat_w), (lat_h // 2, lat_w // 2), (lat_h // 4, lat_w // 4), (lat_h // 8, lat_w // 8)):
+                        for size in (
+                            (lat_h, lat_w),
+                            (lat_h // 2, lat_w // 2),
+                            (lat_h // 4, lat_w // 4),
+                            (lat_h // 8, lat_w // 8),
+                        ):
                             cross_attn_prompts[i][size[0] * size[1]] = prompt_emb_zero
-                            cross_attn_mask[i][size[0] * size[1]] = th.zeros_like(cross_attn_mask[i][size[0] * size[1]])[:, :, 0].unsqueeze(dim=-1)
+                            cross_attn_mask[i][size[0] * size[1]] = th.zeros_like(
+                                cross_attn_mask[i][size[0] * size[1]]
+                            )[:, :, 0].unsqueeze(dim=-1)
 
                     region_dict["cross_attn_prompts"] = cross_attn_prompts
                     region_dict["cross_attn_mask"] = cross_attn_mask
@@ -173,22 +205,40 @@ class UNetWrapper(nn.Module):
                 **cond_kwargs,
             ).sample
         else:
-            raise NotImplementedError("The code below was never really tested for SDXL and probably does now work"
-                                      "with all features or is incorrect. Use at your own risk and draw inspiration"
-                                      "from above for SD2.1 when fixing it.")
+            raise NotImplementedError(
+                "The code below was never really tested for SDXL and probably does now work"
+                "with all features or is incorrect. Use at your own risk and draw inspiration"
+                "from above for SD2.1 when fixing it."
+            )
 
             # SDXL
-            prompt_emb = batch["prompt_emb"] if "prompt_emb" in batch \
-                else self.zero_txt_emb[0].clone().to(noisy_latent.device).repeat(noisy_latent.shape[0], 1, 1)
-            prompt_emb_2 = batch["prompt_emb_2"] if "prompt_emb_2" in batch \
-                else self.zero_txt_emb[1].clone().to(noisy_latent.device).repeat(noisy_latent.shape[0], 1)
-            prompt_emb, prompt_emb_2 = self.do_txt_dropout(prompt_emb, prompt_emb_2, dropout_overwrite=txt_dropout)
+            prompt_emb = (
+                batch["prompt_emb"]
+                if "prompt_emb" in batch
+                else self.zero_txt_emb[0]
+                .clone()
+                .to(noisy_latent.device)
+                .repeat(noisy_latent.shape[0], 1, 1)
+            )
+            prompt_emb_2 = (
+                batch["prompt_emb_2"]
+                if "prompt_emb_2" in batch
+                else self.zero_txt_emb[1]
+                .clone()
+                .to(noisy_latent.device)
+                .repeat(noisy_latent.shape[0], 1)
+            )
+            prompt_emb, prompt_emb_2 = self.do_txt_dropout(
+                prompt_emb, prompt_emb_2, dropout_overwrite=txt_dropout
+            )
 
             orig_size = batch["orig_size"]
             cropped_size = batch["cropped_size"]
             crop_top_left = batch["crop_coords_top_left"]
 
-            add_time_ids = _get_add_time_ids(orig_size, crop_top_left, cropped_size, dtype=prompt_emb.dtype)
+            add_time_ids = _get_add_time_ids(
+                orig_size, crop_top_left, cropped_size, dtype=prompt_emb.dtype
+            )
             add_time_ids = add_time_ids.to(prompt_emb.device)
             added_cond_kwargs = {"text_embeds": prompt_emb_2, "time_ids": add_time_ids}
 
@@ -221,6 +271,10 @@ def init_unet(
     txt_dropout: float = 0.0,
     keep_base_frozen: bool = False,
     ckpt_path: str = None,
+    custome_unet_flag: bool = False,
+    config_json: str = "",
+    remove_downsample_blocks: List[int] = [],
+    remove_resnet_blocks: List[int] = [],
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -247,27 +301,52 @@ def init_unet(
     :param ckpt_path: An optional ckpt_path to load when initing the UNet.
     :return: UNetWrapper to train.
     """
-    assert cond_mechanism in ("none", "cn", "concat"), f"Conditioning mechanism {cond_mechanism} not available."
+    assert cond_mechanism in (
+        "none",
+        "cn",
+        "concat",
+    ), f"Conditioning mechanism {cond_mechanism} not available."
 
     # Setup conditioning mechanism and init UNet
-    if cond_mechanism != "concat":
-        unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet")
+    if custome_unet_flag:
+        # unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet")
+        org_unet = UNet2DConditionModel.from_pretrained(
+            model_name, subfolder="unet"
+        ).to("cuda")
+        unet = ModifiedUNet2DConditionModel(**org_unet.config)
+        unet.load_state_dict(org_unet.state_dict())
+        del org_unet
+        replace_blocks_in_unet(unet, config_json)
+        remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks)
+
     else:
-        # Load UNet with concat conditioning
-        # Init UNet with 8 in_channels (conv_in will be initialized with random weight)
-        unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet",
-                                                    in_channels=8, low_cpu_mem_usage=False,
-                                                    ignore_mismatched_sizes=True)
+        if cond_mechanism != "concat":
+            unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet")
+        else:
+            # Load UNet with concat conditioning
+            # Init UNet with 8 in_channels (conv_in will be initialized with random weight)
+            unet = UNet2DConditionModel.from_pretrained(
+                model_name,
+                subfolder="unet",
+                in_channels=8,
+                low_cpu_mem_usage=False,
+                ignore_mismatched_sizes=True,
+            )
 
-        # Get original conv_in weights
-        conv_in_weight = (UNet2DConditionModel.from_pretrained(model_name, subfolder="unet")
-                          .conv_in.weight.data.to(unet.device))  # (C, 4, 3, 3)
+            # Get original conv_in weights
+            conv_in_weight = UNet2DConditionModel.from_pretrained(
+                model_name, subfolder="unet"
+            ).conv_in.weight.data.to(
+                unet.device
+            )  # (C, 4, 3, 3)
 
-        # Double the weight channels and half weight values.
-        conv_in_weight = th.cat((conv_in_weight, conv_in_weight), dim=1) / 2  # (C, 8, 3, 3)
+            # Double the weight channels and half weight values.
+            conv_in_weight = (
+                th.cat((conv_in_weight, conv_in_weight), dim=1) / 2
+            )  # (C, 8, 3, 3)
 
-        # Replace conv_in weights in unet
-        unet.conv_in.weight = nn.Parameter(conv_in_weight)
+            # Replace conv_in weights in unet
+            unet.conv_in.weight = nn.Parameter(conv_in_weight)
 
     # Load optional checkpoint
     if ckpt_path is not None:
@@ -285,7 +364,7 @@ def init_unet(
                 "learn_time_embedding": cn_learn_time,
                 "conditioning_channels": cn_conditioning_channels,
                 "num_attention_heads": list(cn_attn_head_dim),
-            }
+            },
         )
 
     # Add LoRA
@@ -310,7 +389,9 @@ def init_unet(
         ]
 
         for n, p in unet.named_parameters():
-            if ("bias" in n or "norm" in n) or (cond_mechanism == "cn" and ("base" not in n and "up_blocks" not in n)):
+            if ("bias" in n or "norm" in n) or (
+                cond_mechanism == "cn" and ("base" not in n and "up_blocks" not in n)
+            ):
                 continue
             for pattern in grep:
                 # Always add LoRA to decoder and conv_out
@@ -318,9 +399,12 @@ def init_unet(
                     target_modules.append(n.replace(".weight", ""))
                     break
                 # Add LoRA also encoder + anything else if only_decoder=False
-                elif pattern in n and not only_decoder \
-                        and "control_to_base_for_conv_in" not in n\
-                        and not (cond_mechanism == "concat" and "conv_in" in n):
+                elif (
+                    pattern in n
+                    and not only_decoder
+                    and "control_to_base_for_conv_in" not in n
+                    and not (cond_mechanism == "concat" and "conv_in" in n)
+                ):
                     target_modules.append(n.replace(".weight", ""))
                     break
 
@@ -369,26 +453,50 @@ def init_unet(
         else:
             unet.conv_in.weight.requires_grad = True
 
+    if custome_unet_flag:
+        resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks)
+
     unet.train()
 
     # Calculating zero embedding for CFG dropout
     zero_txt_emb = encode_prompt(model_name, "", False)
 
-    return UNetWrapper(unet, model_name, cond_mechanism, cond_key, cn_cond_scale, cn_dropout, txt_dropout, zero_txt_emb)
+    return UNetWrapper(
+        unet,
+        model_name,
+        cond_mechanism,
+        cond_key,
+        cn_cond_scale,
+        cn_dropout,
+        txt_dropout,
+        zero_txt_emb,
+    )
 
 
 def _get_add_time_ids(
-    orig_size: List[th.Tensor], crop_top_left: List[th.Tensor], target_size: List[th.Tensor], dtype: th.dtype
+    orig_size: List[th.Tensor],
+    crop_top_left: List[th.Tensor],
+    target_size: List[th.Tensor],
+    dtype: th.dtype,
 ) -> th.Tensor:
     """Transforms the additional time ids for SDXL into a tensor (i.e. orig. size, crop coords and
     target size).
     """
-    orig_size = [(int(a.item()), int(b.item())) for a, b in zip(orig_size[0], orig_size[1])]
-    crop_top_left = [(int(a.item()), int(b.item())) for a, b in zip(crop_top_left[0], crop_top_left[1])]
-    target_size = [(int(a.item()), int(b.item())) for a, b in zip(target_size[0], target_size[1])]
+    orig_size = [
+        (int(a.item()), int(b.item())) for a, b in zip(orig_size[0], orig_size[1])
+    ]
+    crop_top_left = [
+        (int(a.item()), int(b.item()))
+        for a, b in zip(crop_top_left[0], crop_top_left[1])
+    ]
+    target_size = [
+        (int(a.item()), int(b.item())) for a, b in zip(target_size[0], target_size[1])
+    ]
 
-    add_time_ids = [(a, b, c, d, e, f) for (a, b), (c, d), (e, f)
-                                    in zip(orig_size, crop_top_left, target_size)]
+    add_time_ids = [
+        (a, b, c, d, e, f)
+        for (a, b), (c, d), (e, f) in zip(orig_size, crop_top_left, target_size)
+    ]
     add_time_ids = th.tensor(add_time_ids, dtype=dtype)
 
     return add_time_ids

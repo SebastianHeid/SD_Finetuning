@@ -48,7 +48,7 @@ print_config: True
 root_dir: ${oc.env:PROJECT_ROOT}
 
 # path to logging directory
-log_dir: <where_your_training_runs_will_be_saved>
+log_dir: /export/data/sheid/diffusion_training
 
 # path to output directory, created dynamically by hydra
 # path generation pattern is specified in `configs/hydra/default_i2i.yaml`

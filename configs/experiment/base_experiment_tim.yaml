@@ -1,0 +1,101 @@
+# @package _global_
+# These are the default settings for an experiment. For defining individual experiments only overwrite the changing
+#   parameters. Refer to experiment_demo.yaml to see the structure of an individual experiment.
+# In theory every variable that every has been set in other configs can be overwritten. Refer to hydra docs to learn more.
+seed: 100 # A seed for "deterministic" training (not really but results will be similar)
+task_name: experiment_diffusion_training # Name of the experiment. Will be used in save name for disk and wandb
+
+callbacks:
+  model_checkpoint: # Settings for BaseModelCheckpoint in callbacks.py
+    every_n_epochs: 5
+  image_logger: # Settings for BaseImageLogger in callbacks.py
+    sampling_freq: 2297 # in training steps. Adapt to your dataset
+    num_batches: 2
+    sampling_batch_size: 5 # Batch size that is used during sampling. Should be smaller than training bs to avoid OOM.
+    cond: true
+    uncond: true
+    cfg: true
+  eval_callback: # Settings for BaseEvalCallback in callbacks.py
+    eval_freq: 4594 # in training steps. Adapt to your dataset
+    eval_cmmd: true
+    eval_fid: false
+    eval_kid: false
+    cond: true
+    uncond: true
+    cfg: true
+    num_images: 75
+    delete_samples: true
+  test_callback: # Settings for BaseTestCallback in callbacks.py
+    eval_cmmd: true
+    eval_fid: true
+    eval_kid: true
+    cond: true
+    uncond: true
+    cfg: true
+
+data: # Here any parameters from lightning_data.py can be set
+  batch_size: 10 # per GPU.
+  gradient_accumulation: 1
+
+  persistent_workers: false # Refer to PyTorch's dataloader documentation
+  pin_memory: false # Refer to PyTorch's dataloader documentation
+  num_workers: 16 # Number of dataloaders
+
+  num_val: 100 # Number of validation images to use for calculating a stable validation loss
+  num_stable_train: 100 # Number of training images to use for calculating a stable training loss
+
+  # Overwrites the default transforms that also include a RandomCrop. Supports any torchvision.transforms.v2 transform
+  train_dataset:
+    transforms:
+      _target_: torchvision.transforms.v2.Compose
+      transforms:
+        - _target_: torchvision.transforms.v2.ToTensor
+        - _target_: torchvision.transforms.v2.Resize
+          size: 512
+          interpolation: 3
+        - _target_: torchvision.transforms.v2.RandomHorizontalFlip
+          p: 0.5
+        - _target_: dmt.data.dataset.DivideValue
+          value: 127.5
+        - _target_: dmt.data.dataset.AddValue
+          value: -1.0
+  val_dataset:
+    transforms: ${data.train_dataset.transforms}
+  test_dataset:
+    transforms: ${data.train_dataset.transforms}
+
+logger: # Here any logger that is supported by pytorch lightning can be set. Most likely only wandb will work correctly with the custom callbacks defined in callbacks.py
+  wandb: # Wandb logger settings. Can be removed if wandb is not used
+    project: dm-training # Name of your wandb project
+    name: ${task_name} # Same value as set above for task_name
+
+trainer: # Here all parameters for pytorch lightning's Trainer class can be set
+  max_epochs: 40
+  devices: 1 # Number of GPUs to train on
+  val_check_interval: 0.5 # Calculate stable training loss and validation loss every half epoch
+
+model: # Not complete. Can set any parameter from lightning.py's __init___
+  model_name: stabilityai/stable-diffusion-2-1 # Huggingface repository name for model to fine-tune
+  loss_type: mse # Model loss
+  prediction_type: v_prediction # Model prediction type
+  zero_snr: true # Use ZeroSNR
+  snr_gamma: null # MinSNR weighting value
+
+  gradient_checkpointing: true # Use gradient checkpointing. XFormers is automatically used if installed in conda environment.
+
+  # continue_epoch: <int> # Set the starting epoch to e.g. continue training from a ckpt.
+  # continue_step: <int> # Set the starting step to e.g. continue training from a ckpt. Also, epoch and step can be set both at the same time.
+
+  # unet: Here all parameters to initialize the UNet (e.g. add ControlNet or LoRA) can be set. For possible parameters refer to init_unet(...) in unet.py
+    # ckpt_path: <dir_of_ckpt_that_should_be_loaded_or_continued_from>
+    # ...
+
+  optimizer:
+    lr: 2e-5 # Learning rate
+
+  scheduler: # Define the learning rate scheduler to use
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    _partial_: true
+    T_max: ${trainer.max_epochs} # Same value as set above for trainer
+    eta_min: 0.0
+    last_epoch: -1

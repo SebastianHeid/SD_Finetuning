@@ -1,0 +1,14 @@
+# you can specify several downsample blocks from which the resnet blocks will be removed
+# thereby the the entries at the same positon in the list will from a pair
+
+# downsample_blocks: [1], resnet_blocks: [1] means that in the first downsample block the first resnet block is remove
+
+# downsample_blocks: [1, 2], resnet_blocks: [0, 1] means that
+# in the first downsample block the second resnet block is remove
+# in the third downsample block the first resnet block is remove
+config_json:  "/export/home/sheid/SD_Distillation/json/SD_DownBlocks.json"
+
+remove_resnet_blocks:
+  downsample_blocks: [1] 
+  resnet_blocks: [1]
+  

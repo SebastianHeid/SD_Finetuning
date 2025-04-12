@@ -9,7 +9,7 @@ defaults:
 model_checkpoint:
   dirpath: ${output_dir}/checkpoints
   filename: "epoch_{epoch:03d}"
-  every_n_epochs: 5
+  #every_n_epochs: 5
   save_top_k: -1
   save_lora: true
   save_merged: true

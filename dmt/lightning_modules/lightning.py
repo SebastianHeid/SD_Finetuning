@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch as th
 from diffusers.schedulers import DDPMScheduler
@@ -8,15 +8,15 @@ from lightning.pytorch import LightningModule
 from tqdm import tqdm
 from typing_extensions import override
 
-from dmt.models import UNetWrapper, VaeWrapper, PerceptualFeatureExtractor
+from dmt.models import PerceptualFeatureExtractor, UNetWrapper, VaeWrapper
 from dmt.utils import (
     RankedLogger,
     compute_generator_loss,
+    move_tensors_to_device,
     prediction_to_img,
     prediction_to_noise,
     set_requires_grad,
     temprngstate,
-    move_tensors_to_device
 )
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -48,6 +48,7 @@ class LitBaseModule(LightningModule):
         matmul_precision: Optional[str] = "high",
         continue_epoch: Optional[int] = None,
         continue_step: Optional[int] = None,
+        latent_dataset: bool = False,
     ) -> None:
         """Init the Training Loop
 
@@ -85,6 +86,7 @@ class LitBaseModule(LightningModule):
         self.matmul_precision = matmul_precision
         self.continue_epoch = continue_epoch
         self.continue_step = continue_step
+        self.latent_dataset = latent_dataset
 
         # Init loss
         self.lpips = None
@@ -97,22 +99,28 @@ class LitBaseModule(LightningModule):
                 "2-1": "sd21",
                 "xl": "sdxl",
                 "3": "sd3",
-                "flux": "flux"
+                "flux": "flux",
             }
-            encoder = next((value for key, value in encoders.items() if key in model_name), None)
+            encoder = next(
+                (value for key, value in encoders.items() if key in model_name), None
+            )
 
             self.lpips = ELatentLPIPS(encoder=encoder, augment="bg")
             set_requires_grad(self.lpips, False)
         elif loss_type == "perc":
             # Init Perceptual loss
-            self.feature_extractor = (PerceptualFeatureExtractor(model_name, perc_ckpt_path)
-                                      .to(self.unet_wrapper.unet.device))
+            self.feature_extractor = PerceptualFeatureExtractor(
+                model_name, perc_ckpt_path
+            ).to(self.unet_wrapper.unet.device)
             self.feature_extractor.requires_grad_(False)
             self.feature_extractor.eval()
 
         # Init noise scheduler
         default_sched = DDPMScheduler.from_pretrained(model_name, subfolder="scheduler")
-        assert not (zero_snr and (prediction_type != "v_prediction" or timestep_spacing != "trailing"))
+        assert not (
+            zero_snr
+            and (prediction_type != "v_prediction" or timestep_spacing != "trailing")
+        )
         self.noise_scheduler = DDPMScheduler(
             default_sched.config.num_train_timesteps,
             default_sched.config.beta_start,
@@ -159,25 +167,45 @@ class LitBaseModule(LightningModule):
 
             # Set epoch
             if self.continue_epoch > 0:
-                self.trainer.fit_loop.epoch_progress.current.completed = self.continue_epoch
-                self.trainer.fit_loop.epoch_progress.current.processed = self.continue_epoch
-                assert self.current_epoch == self.continue_epoch, f"{self.current_epoch} != {self.continue_epoch}"
+                self.trainer.fit_loop.epoch_progress.current.completed = (
+                    self.continue_epoch
+                )
+                self.trainer.fit_loop.epoch_progress.current.processed = (
+                    self.continue_epoch
+                )
+                assert (
+                    self.current_epoch == self.continue_epoch
+                ), f"{self.current_epoch} != {self.continue_epoch}"
 
             # Set batch id
             if self.continue_step is not None:
                 total_batch_idx = self.continue_step
             else:
-                total_batch_idx = self.current_epoch * len(self.trainer.train_dataloader)
-            self.trainer.fit_loop.epoch_loop.batch_progress.total.ready = total_batch_idx + 1
-            self.trainer.fit_loop.epoch_loop.batch_progress.total.completed = total_batch_idx
-            assert self.trainer.fit_loop.epoch_loop.total_batch_idx + 1 == total_batch_idx + 1, \
-                f"{self.trainer.fit_loop.epoch_loop.total_batch_idx + 1} != {total_batch_idx + 1}"
+                total_batch_idx = self.current_epoch * len(
+                    self.trainer.train_dataloader
+                )
+            self.trainer.fit_loop.epoch_loop.batch_progress.total.ready = (
+                total_batch_idx + 1
+            )
+            self.trainer.fit_loop.epoch_loop.batch_progress.total.completed = (
+                total_batch_idx
+            )
+            assert (
+                self.trainer.fit_loop.epoch_loop.total_batch_idx + 1
+                == total_batch_idx + 1
+            ), f"{self.trainer.fit_loop.epoch_loop.total_batch_idx + 1} != {total_batch_idx + 1}"
 
             # Set global step
             global_step = total_batch_idx
-            self.trainer.fit_loop.epoch_loop.manual_optimization.optim_step_progress.total.completed = global_step
-            self.trainer.fit_loop.epoch_loop.automatic_optimization.optim_progress.optimizer.step.total.completed = global_step
-            assert self.global_step == global_step, f"{self.global_step} != {global_step}"
+            self.trainer.fit_loop.epoch_loop.manual_optimization.optim_step_progress.total.completed = (
+                global_step
+            )
+            self.trainer.fit_loop.epoch_loop.automatic_optimization.optim_progress.optimizer.step.total.completed = (
+                global_step
+            )
+            assert (
+                self.global_step == global_step
+            ), f"{self.global_step} != {global_step}"
 
             # Tick LR Scheduler for every epoch
             for i in range(self.current_epoch):
@@ -197,10 +225,13 @@ class LitBaseModule(LightningModule):
         ############################
         # (1) Prepare inputs
         ############################
-        img = batch["pixel_values"]
+        if self.latent_dataset:
+            latent = batch["pixel_values"]
+        else:
+            img = batch["pixel_values"]
 
-        # Encode images into latent space
-        latent = self.vae_wrapper.encode(img)
+            # Encode images into latent space
+            latent = self.vae_wrapper.encode(img)
 
         # If conditioning mechanism == "concat" convert cond into latent space # TODO Move this to data loading.
         if self.unet_wrapper.cond_mechanism == "concat":
@@ -228,8 +259,12 @@ class LitBaseModule(LightningModule):
         ############################
         # Model prediction and conversion to img (e.g. from noise or v)
         pred = self.unet_wrapper(noisy_latent, timesteps, batch)
-        pred_noise = prediction_to_noise(pred, noisy_latent, timesteps, self.noise_scheduler)
-        pred_img = prediction_to_img(pred, noisy_latent, timesteps, self.noise_scheduler)
+        pred_noise = prediction_to_noise(
+            pred, noisy_latent, timesteps, self.noise_scheduler
+        )
+        pred_img = prediction_to_img(
+            pred, noisy_latent, timesteps, self.noise_scheduler
+        )
 
         # Reconstruction loss (e.g. MSE, LPIPS, Perceptual).
         loss = compute_generator_loss(
@@ -261,7 +296,9 @@ class LitBaseModule(LightningModule):
         self.manual_backward(loss_train, retain_graph=False)
 
         # Clip grads
-        self.clip_gradients(optimizer, gradient_clip_val=0.5, gradient_clip_algorithm="norm")
+        self.clip_gradients(
+            optimizer, gradient_clip_val=0.5, gradient_clip_algorithm="norm"
+        )
 
         # Update generator weights and set grads to None
         if (batch_idx + 1) % self.gradient_accumulation == 0:
@@ -269,8 +306,16 @@ class LitBaseModule(LightningModule):
             optimizer.zero_grad(set_to_none=True)
 
         # Log loss
-        self.log("train/loss", loss_train.cpu().item(), prog_bar=True, on_step=True, on_epoch=False)
-        self.log("global_step", self.global_step, prog_bar=True, on_step=True, on_epoch=False)
+        self.log(
+            "train/loss",
+            loss_train.cpu().item(),
+            prog_bar=True,
+            on_step=True,
+            on_epoch=False,
+        )
+        self.log(
+            "global_step", self.global_step, prog_bar=True, on_step=True, on_epoch=False
+        )
 
     @th.no_grad()
     def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> th.Tensor:
@@ -287,7 +332,7 @@ class LitBaseModule(LightningModule):
         return loss_val
 
     def on_validation_epoch_end(self) -> None:
-        """Manually run a sample of training images to compute a stable training loss """
+        """Manually run a sample of training images to compute a stable training loss"""
         if self.global_step > 0:
             dataloader = self.trainer.datamodule.stable_train_dataloader()
 
@@ -335,8 +380,10 @@ class LitBaseModule(LightningModule):
 
         # Init schedulers
         # Remove unsupported arguments that are there due to hydras inheritance scheme
-        if (self.partial_scheduler.func == th.optim.lr_scheduler.CosineAnnealingLR or
-                self.partial_scheduler.func == th.optim.lr_scheduler.LinearLR):
+        if (
+            self.partial_scheduler.func == th.optim.lr_scheduler.CosineAnnealingLR
+            or self.partial_scheduler.func == th.optim.lr_scheduler.LinearLR
+        ):
             self.partial_scheduler.keywords.pop("factor")
             self.partial_scheduler.keywords.pop("total_iters")
         scheduler = self.partial_scheduler(optimizer=optimizer)

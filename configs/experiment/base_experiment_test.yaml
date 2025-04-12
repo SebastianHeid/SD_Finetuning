@@ -4,16 +4,16 @@ task_name: experiment_test
 
 callbacks:
   model_checkpoint:
-    every_n_train_steps: 300
+    every_n_train_steps: 10
   image_logger:
-    sampling_freq: 1000
+    sampling_freq: 10
     num_batches: 3
     sampling_batch_size: 3
     cond: false
     uncond: false
     cfg: true
   eval_callback:
-    eval_freq: 100
+    eval_freq: 10
     eval_cmmd: true
     eval_fid: false
     eval_kid: false
@@ -31,7 +31,7 @@ callbacks:
     cfg: true
 
 data:
-  batch_size: 5 #
+  batch_size: 2 #
   gradient_accumulation: 2 #
 
   persistent_workers: false
@@ -43,13 +43,13 @@ data:
 
 logger:
   wandb:
-    project: dm-finetuning
+    project: test
 
 trainer:
   max_epochs: 20 #
   reload_dataloaders_every_n_epochs: 9999999
-  val_check_interval: 0.1 #
-  devices: 1
+  val_check_interval: 0.5 #
+  devices: 2
 
 model:
   model_name: stabilityai/stable-diffusion-2-1-base #
@@ -58,17 +58,24 @@ model:
   zero_snr: false
   snr_gamma: null
   latent_dataset: True
-  
+
+# customed unet
+  unet:
+    custome_unet_flag: True
+    config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
+    remove_downsample_blocks: [1] 
+    remove_resnet_blocks: [1]
+# ------------------------------
 
   gradient_checkpointing: true
 
 
-  optimizer:
-    lr: 2e-5 # Learning rate
 
-  scheduler: # Define the learning rate scheduler to use
-    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  optimizer:
+    lr: 2e-6
+
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.LinearLR
     _partial_: true
-    T_max: ${trainer.max_epochs} # Same value as set above for trainer
-    eta_min: 0.0
-    last_epoch: -1
+    total_iters: ${trainer.max_epochs}

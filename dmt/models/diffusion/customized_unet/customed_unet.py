@@ -12,8 +12,6 @@ logger = logging.get_logger(__name__)
 class ModifiedUNet2DConditionModel(UNet2DConditionModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.unet.forward = unet_forward
-        # replace_blocks_in_unet(unet)
 
     def forward(
         self,
@@ -31,11 +29,11 @@ class ModifiedUNet2DConditionModel(UNet2DConditionModel):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        output = unet_forward(
+        sample, down_block_res_samples, res_outputs, res_inputs, emb = unet_forward(
             self,
             sample,
             timestep,
             encoder_hidden_states,
             added_cond_kwargs=added_cond_kwargs,
         )
-        return output
+        return sample, res_outputs, res_inputs, emb

@@ -11,9 +11,10 @@ def downsample(
     encoder_hidden_states: torch.Tensor,
     is_multiscale=False,
 ):
-    feat_list = []
+
     down_block_res_samples = (sample,)
     res_outputs = ()
+    res_inputs = ()
     for blk_ind, downsample_block in enumerate(self.down_blocks):
         # print(blk_ind + 1, ". Downsample Block")
         if (
@@ -23,7 +24,7 @@ def downsample(
             # For t2i-adapter CrossAttnDownBlock2D
             additional_residuals = {}
 
-            sample, res_samples, res_out = downsample_block(
+            sample, res_samples, res_out, res_in = downsample_block(
                 hidden_states=sample,
                 temb=emb,
                 encoder_hidden_states=encoder_hidden_states,
@@ -33,16 +34,17 @@ def downsample(
                 **additional_residuals,
             )
             res_outputs += (res_out,)
+            res_inputs += (res_in,)
         else:
-            sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
-            res_outputs += (res_samples,)
+            sample, res_samples, res_out, res_in = downsample_block(
+                hidden_states=sample, temb=emb
+            )
+            res_outputs += (res_out,)
+            res_inputs += (res_in,)
         down_block_res_samples += res_samples
 
-        if is_multiscale and blk_ind <= 1:
-            feat_list.append(sample)
     # return sample, down_block_res_samples, res_outputs
-    print(len(res_outputs))
-    return sample, down_block_res_samples
+    return sample, down_block_res_samples, res_outputs, res_inputs
 
 
 def upsample(
@@ -118,10 +120,7 @@ def unet_forward(
     sample = self.conv_in(sample)
 
     # 3. down
-    # # sample, down_block_res_samples, res_outputs = downsample(
-    # #     self, emb, sample, encoder_hidden_states
-    # # )
-    sample, down_block_res_samples = downsample(
+    sample, down_block_res_samples, res_outputs, res_inputs = downsample(
         self, emb, sample, encoder_hidden_states
     )
 
@@ -143,7 +142,6 @@ def unet_forward(
             sample = self.mid_block(sample, emb)
 
     # 5. up
-    # print(len(down_block_res_samples))
     sample = upsample(self, emb, sample, encoder_hidden_states, down_block_res_samples)
     # 6. post-process
     if self.conv_norm_out:
@@ -151,4 +149,5 @@ def unet_forward(
         sample = self.conv_act(sample)
     sample = self.conv_out(sample)
 
-    return UNet2DConditionOutput(sample=sample)
+    return sample, down_block_res_samples, res_outputs, res_inputs, emb
+    # return UNet2DConditionOutput(sample=sample)

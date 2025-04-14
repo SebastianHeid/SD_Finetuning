@@ -31,7 +31,7 @@ callbacks:
     cfg: true
 
 data:
-  batch_size: 10 #
+  batch_size: 2 #
   gradient_accumulation: 1 #
 
   persistent_workers: false
@@ -64,7 +64,9 @@ model:
     custome_unet_flag: True
     config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
     remove_downsample_blocks: [1] 
-    remove_resnet_blocks: [1]
+    remove_resnet_blocks: [0]
+    loss_intermediate_output_flag: True 
+    loss_final_output_flag: False
 # ------------------------------
 
   gradient_checkpointing: true

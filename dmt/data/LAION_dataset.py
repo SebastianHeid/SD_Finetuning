@@ -16,7 +16,7 @@ class LAIONDataset(Dataset):
         if split == "val" or split == "test":
             self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")[:100]
         else:
-            self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")
+            self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")[:100]
         self.prompts = dict()
 
         print("Load prompts ...")

@@ -40,6 +40,12 @@ class UNetWrapper(nn.Module):
         cn_dropout: float = 0.0,
         txt_dropout: float = 0.0,
         zero_txt_emb: Optional[th.Tensor] = None,
+        custome_unet_flag: bool = False,
+        remove_downsample_blocks: List[int] = [],
+        remove_resnet_blocks: List[int] = [],
+        loss_intermediate_output_flag: bool = False,
+        loss_final_output_flag: bool = False,
+        list_removed_resent_blocks: List = [],
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -61,6 +67,12 @@ class UNetWrapper(nn.Module):
         self.cn_dropout = cn_dropout
         self.txt_dropout = txt_dropout
         self.zero_txt_emb = zero_txt_emb
+        self.custome_unet_flag = custome_unet_flag
+        self.loss_intermediate_output_flag = loss_intermediate_output_flag
+        self.loss_final_output_flag = loss_final_output_flag
+        self.remove_downsample_blocks = remove_downsample_blocks
+        self.remove_resnet_blocks = remove_resnet_blocks
+        self.list_removed_resent_blocks = list_removed_resent_blocks
 
     def do_cn_dropout(
         self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
@@ -197,13 +209,48 @@ class UNetWrapper(nn.Module):
             if "self_attn_mask" in batch:
                 region_dict["self_attn_mask"] = batch["self_attn_mask"]
 
-            model_pred = self.unet(
-                noisy_latent,
-                timesteps,
-                encoder_hidden_states=prompt_emb,
-                cross_attention_kwargs=region_dict if len(region_dict) > 0 else None,
-                **cond_kwargs,
-            ).sample
+            if self.custome_unet_flag:
+                res_pred = []
+                res_org = []
+                res_in = []
+                sample, res_outputs, res_inputs, emb = self.unet(
+                    noisy_latent,
+                    timesteps,
+                    encoder_hidden_states=prompt_emb,
+                    cross_attention_kwargs=(
+                        region_dict if len(region_dict) > 0 else None
+                    ),
+                    **cond_kwargs,
+                )
+                if self.loss_intermediate_output_flag:
+                    for i in range(len(self.remove_downsample_blocks)):
+                        down_block_num = self.remove_downsample_blocks[i]
+                        res_block_num = self.remove_resnet_blocks[i]
+                        res_pred.append(res_outputs[down_block_num][res_block_num])
+                        if res_block_num == 0:
+                            down_block_num -= 1
+                            res_block_num = -1
+                        elif res_block_num == 1:
+                            res_block_num = 0
+                        res_in.append(res_inputs[down_block_num][res_block_num])
+                    for i in range(len(self.list_removed_resent_blocks)):
+                        res_org.append(
+                            self.list_removed_resent_blocks[i](res_in[i], emb)
+                        )
+
+                    return sample, res_pred, res_org
+                return sample, [], []
+
+            else:
+                model_pred = self.unet(
+                    noisy_latent,
+                    timesteps,
+                    encoder_hidden_states=prompt_emb,
+                    cross_attention_kwargs=(
+                        region_dict if len(region_dict) > 0 else None
+                    ),
+                    **cond_kwargs,
+                ).sample
         else:
             raise NotImplementedError(
                 "The code below was never really tested for SDXL and probably does now work"
@@ -275,6 +322,8 @@ def init_unet(
     config_json: str = "",
     remove_downsample_blocks: List[int] = [],
     remove_resnet_blocks: List[int] = [],
+    loss_intermediate_output_flag: bool = False,
+    loss_final_output_flag: bool = False,
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -309,15 +358,22 @@ def init_unet(
 
     # Setup conditioning mechanism and init UNet
     if custome_unet_flag:
-        # unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet")
-        org_unet = UNet2DConditionModel.from_pretrained(
-            model_name, subfolder="unet"
-        ).to("cuda")
-        unet = ModifiedUNet2DConditionModel(**org_unet.config)
-        unet.load_state_dict(org_unet.state_dict())
-        del org_unet
+        sd_unet = UNet2DConditionModel.from_pretrained(model_name, subfolder="unet").to(
+            "cuda"
+        )
+        unet = ModifiedUNet2DConditionModel(**sd_unet.config)
+        unet.load_state_dict(sd_unet.state_dict())
         replace_blocks_in_unet(unet, config_json)
-        remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks)
+        list_removed_resent_blocks = remove_resnet_layers(
+            unet, remove_downsample_blocks, remove_resnet_blocks
+        )
+        # obtain GT for intermediate features
+        if loss_intermediate_output_flag:
+            ref_unet = ModifiedUNet2DConditionModel(**sd_unet.config)
+            ref_unet.load_state_dict(sd_unet.state_dict())
+            replace_blocks_in_unet(ref_unet, config_json)
+            ref_unet.requires_grad_(False)
+        del sd_unet
 
     else:
         if cond_mechanism != "concat":
@@ -461,16 +517,52 @@ def init_unet(
     # Calculating zero embedding for CFG dropout
     zero_txt_emb = encode_prompt(model_name, "", False)
 
-    return UNetWrapper(
-        unet,
-        model_name,
-        cond_mechanism,
-        cond_key,
-        cn_cond_scale,
-        cn_dropout,
-        txt_dropout,
-        zero_txt_emb,
-    )
+    if custome_unet_flag:
+        return [
+            UNetWrapper(
+                unet,
+                model_name,
+                cond_mechanism,
+                cond_key,
+                cn_cond_scale,
+                cn_dropout,
+                txt_dropout,
+                zero_txt_emb,
+                custome_unet_flag,
+                remove_downsample_blocks,
+                remove_resnet_blocks,
+                loss_intermediate_output_flag,
+                loss_final_output_flag,
+                list_removed_resent_blocks,
+            ),
+            UNetWrapper(
+                ref_unet,
+                model_name,
+                cond_mechanism,
+                cond_key,
+                cn_cond_scale,
+                cn_dropout,
+                txt_dropout,
+                zero_txt_emb,
+                custome_unet_flag,
+                remove_downsample_blocks,
+                remove_resnet_blocks,
+                loss_intermediate_output_flag,
+                loss_final_output_flag,
+            ),
+        ]
+
+    else:
+        return UNetWrapper(
+            unet,
+            model_name,
+            cond_mechanism,
+            cond_key,
+            cn_cond_scale,
+            cn_dropout,
+            txt_dropout,
+            zero_txt_emb,
+        )
 
 
 def _get_add_time_ids(

@@ -146,9 +146,9 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                 logger.warning(
                     "Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored."
                 )
-
         output_states = ()
-        resnet_states = ()
+        resnet_out_states = ()
+        resnet_in_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
 
@@ -175,7 +175,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                     **ckpt_kwargs,
                 )
                 # -------- get output of resnet block -----------
-                resnet_states = resnet_states + (hidden_states,)
+                resnet_out_states = resnet_out_states + (hidden_states,)
                 # ------------------------------------------------
                 hidden_states = attn(
                     hidden_states,
@@ -185,12 +185,11 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+                resnet_in_states = resnet_in_states + (hidden_states,)
             else:
-                # print("inputs resnet: ", hidden_states.shape)
                 hidden_states = resnet(hidden_states, temb)
                 # -------- get output of resnet block -----------
-                # print("output of Resnet block: ", hidden_states.shape)
-                resnet_states = resnet_states + (hidden_states,)
+                resnet_out_states = resnet_out_states + (hidden_states,)
                 # ------------------------------------------------
                 hidden_states = attn(
                     hidden_states,
@@ -200,7 +199,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                # print("output of attention block: ", hidden_states.shape)
+                resnet_in_states = resnet_in_states + (hidden_states,)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -213,8 +212,9 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
             output_states = output_states + (hidden_states,)
+            resnet_in_states = resnet_in_states + (hidden_states,)
         # add resnet_states to return values
-        return hidden_states, output_states, resnet_states
+        return hidden_states, output_states, resnet_out_states, resnet_in_states
 
 
 class CustomDownBlock2D(DownBlock2D):
@@ -299,6 +299,8 @@ class CustomDownBlock2D(DownBlock2D):
             deprecate("scale", "1.0.0", deprecation_message)
 
         output_states = ()
+        resnet_out_states = ()
+        resnet_in_states = ()
 
         for resnet in self.resnets:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -323,6 +325,8 @@ class CustomDownBlock2D(DownBlock2D):
             else:
                 hidden_states = resnet(hidden_states, temb)
 
+            resnet_out_states += (hidden_states,)
+            resnet_in_states += (hidden_states,)
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
@@ -330,8 +334,9 @@ class CustomDownBlock2D(DownBlock2D):
                 hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
+            resnet_in_states += (hidden_states,)
 
-        return hidden_states, output_states
+        return hidden_states, output_states, resnet_out_states, resnet_in_states
 
 
 class IdentityBlock(nn.Module):

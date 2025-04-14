@@ -12,6 +12,7 @@ from dmt.models import PerceptualFeatureExtractor, UNetWrapper, VaeWrapper
 from dmt.utils import (
     RankedLogger,
     compute_generator_loss,
+    compute_intermediate_loss,
     move_tensors_to_device,
     prediction_to_img,
     prediction_to_noise,
@@ -49,6 +50,7 @@ class LitBaseModule(LightningModule):
         continue_epoch: Optional[int] = None,
         continue_step: Optional[int] = None,
         latent_dataset: bool = False,
+        custome_unet_flag: bool = False,
     ) -> None:
         """Init the Training Loop
 
@@ -87,6 +89,7 @@ class LitBaseModule(LightningModule):
         self.continue_epoch = continue_epoch
         self.continue_step = continue_step
         self.latent_dataset = latent_dataset
+        self.custome_unet_flag = self.unet_wrapper.custome_unet_flag
 
         # Init loss
         self.lpips = None
@@ -258,27 +261,69 @@ class LitBaseModule(LightningModule):
         # (2) Train SD
         ############################
         # Model prediction and conversion to img (e.g. from noise or v)
-        pred = self.unet_wrapper(noisy_latent, timesteps, batch)
-        pred_noise = prediction_to_noise(
-            pred, noisy_latent, timesteps, self.noise_scheduler
-        )
-        pred_img = prediction_to_img(
-            pred, noisy_latent, timesteps, self.noise_scheduler
-        )
+        if self.custome_unet_flag:
+            pred, res_pred, res_org = self.unet_wrapper(noisy_latent, timesteps, batch)
+            pred_noise = prediction_to_noise(
+                pred, noisy_latent, timesteps, self.noise_scheduler
+            )
+            pred_img = prediction_to_img(
+                pred, noisy_latent, timesteps, self.noise_scheduler
+            )
+            if self.unet_wrapper.loss_final_output_flag:
+                final_output_loss = compute_generator_loss(
+                    self,
+                    timesteps,
+                    pred,
+                    pred_noise,
+                    pred_img,
+                    latent,
+                    noise,
+                    batch=batch,
+                    loss_type=self.loss_type,
+                    snr_gamma=self.snr_gamma,
+                )
+            if self.unet_wrapper.loss_intermediate_output_flag:
+                intermediate_output_loss = compute_intermediate_loss(
+                    self,
+                    res_pred,
+                    res_org,
+                    timesteps,
+                    snr_gamma=self.snr_gamma,
+                )
+            if (
+                self.unet_wrapper.loss_final_output_flag
+                and self.unet_wrapper.loss_intermediate_output_flag
+            ):
+                return intermediate_output_loss + final_output_loss
+            elif self.unet_wrapper.loss_final_output_flag:
+                return final_output_loss
+            elif self.unet_wrapper.loss_intermediate_output_flag:
+                return intermediate_output_loss
+            else:
+                raise "Need to set either loss_intermediate_output_flag loss or loss_final_output_flag loss Ture."
 
-        # Reconstruction loss (e.g. MSE, LPIPS, Perceptual).
-        loss = compute_generator_loss(
-            self,
-            timesteps,
-            pred,
-            pred_noise,
-            pred_img,
-            latent,
-            noise,
-            batch=batch,
-            loss_type=self.loss_type,
-            snr_gamma=self.snr_gamma,
-        )
+        else:
+            pred = self.unet_wrapper(noisy_latent, timesteps, batch)
+            pred_noise = prediction_to_noise(
+                pred, noisy_latent, timesteps, self.noise_scheduler
+            )
+            pred_img = prediction_to_img(
+                pred, noisy_latent, timesteps, self.noise_scheduler
+            )
+
+            # Reconstruction loss (e.g. MSE, LPIPS, Perceptual).
+            loss = compute_generator_loss(
+                self,
+                timesteps,
+                pred,
+                pred_noise,
+                pred_img,
+                latent,
+                noise,
+                batch=batch,
+                loss_type=self.loss_type,
+                snr_gamma=self.snr_gamma,
+            )
 
         return loss
 

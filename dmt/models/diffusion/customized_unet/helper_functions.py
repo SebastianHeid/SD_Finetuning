@@ -22,19 +22,19 @@ def resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks):
     blocks = []
 
     for i in range(len(remove_downsample_blocks)):
-        down_idx = remove_downsample_blocks[i]
-        res_idx = remove_resnet_blocks[i]
+        down_block_num = remove_downsample_blocks[i]
+        res_block_num = remove_resnet_blocks[i]
 
         assert not (
-            down_idx == 0 and res_idx == 0
+            down_block_num == 0 and res_block_num == 0
         ), "Do not remove in the first block the first layer"
-        if res_idx == 0:
-            down_idx -= 1
-            res_idx = 1
-        elif res_idx == 1:
-            res_idx = 0
+        if res_block_num == 0:
+            down_block_num -= 1
+            res_block_num = 1
+        elif res_block_num == 1:
+            res_block_num = 0
 
-        blocks.append(unet.down_blocks[down_idx].resnets[res_idx])
+        blocks.append(unet.down_blocks[down_block_num].resnets[res_block_num])
 
     for block in blocks:
         for param in block.parameters():
@@ -71,7 +71,7 @@ def remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks):
     assert len(remove_downsample_blocks) == len(
         remove_resnet_blocks
     ), "Number of downsample_blocks and resnet_blocks must be equal"
-
+    removed_resnet_layers = []
     for i in range(len(remove_downsample_blocks)):
         down_block_num = remove_downsample_blocks[i]
         res_block_num = remove_resnet_blocks[i]
@@ -81,4 +81,8 @@ def remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks):
             place_holder_module = Down3Res1()
         else:
             place_holder_module = IdentityBlock()
+        removed_resnet_layers.append(
+            unet.down_blocks[down_block_num].resnets[res_block_num]
+        )
         unet.down_blocks[down_block_num].resnets[res_block_num] = place_holder_module
+    return removed_resnet_layers

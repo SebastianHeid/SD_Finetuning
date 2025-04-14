@@ -1,18 +1,25 @@
 import csv
-import re
-import random
 import logging
-from typing import Any, Dict, List, Optional, Union, Callable
 import os
+import random
+import re
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import torchvision.io as IO
 from torch.utils.data import Dataset
 from torchvision.io import ImageReadMode
-from torchvision.transforms.v2 import (Compose, Transform, Resize, ToTensor, RandomCrop,
-                                       RandomHorizontalFlip, CenterCrop)
+from torchvision.transforms.v2 import (
+    CenterCrop,
+    Compose,
+    RandomCrop,
+    RandomHorizontalFlip,
+    Resize,
+    ToTensor,
+    Transform,
+)
 from torchvision.transforms.v2 import functional as F
-import torchvision.io as IO
 
-from dmt.utils import encode_prompts
+from dmt.utils.model_utils import encode_prompts
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -47,13 +54,13 @@ class DivideValue(Transform):
 
 class BaseDataset(Dataset):
     def __init__(
-            self,
-            dataset_name: str,
-            dataset_dir: str,
-            split: str,
-            model_name: Optional[str] = None,
-            prompts_file: Optional[str] = None,
-            transforms: Optional[Union[List[Transform], Compose]] = None,
+        self,
+        dataset_name: str,
+        dataset_dir: str,
+        split: str,
+        model_name: Optional[str] = None,
+        prompts_file: Optional[str] = None,
+        transforms: Optional[Union[List[Transform], Compose]] = None,
     ) -> None:
         super().__init__()
         self.dataset_name = dataset_name
@@ -61,7 +68,9 @@ class BaseDataset(Dataset):
         self.split = split
         self.model_name = model_name
         self.prompts_file = prompts_file
-        self.transforms = self.get_default_transforms() if transforms is None else transforms
+        self.transforms = (
+            self.get_default_transforms() if transforms is None else transforms
+        )
 
         # Init image paths for dataset
         self.load_additional: List[Callable] = []
@@ -76,7 +85,10 @@ class BaseDataset(Dataset):
     def update_image_paths(self) -> None:
         dataset_split_dir = os.path.join(self.dataset_dir, self.split)
         image_paths = []
-        for img_name in sorted(os.listdir(dataset_split_dir), key=lambda x: int(re.search(r'\d+', x).group())):
+        for img_name in sorted(
+            os.listdir(dataset_split_dir),
+            key=lambda x: int(re.search(r"\d+", x).group()),
+        ):
             image_paths.append(os.path.join(dataset_split_dir, img_name))
         self.image_paths = image_paths
 
@@ -85,7 +97,7 @@ class BaseDataset(Dataset):
 
         # Read prompts from csv
         prompts = {}
-        with open(self.prompts_file, mode='r', encoding='utf-8') as file_ref:
+        with open(self.prompts_file, mode="r", encoding="utf-8") as file_ref:
             csv_reader = csv.DictReader(file_ref)
             for row in csv_reader:
                 prompts[row["img_name"]] = row["prompt"]
@@ -97,16 +109,20 @@ class BaseDataset(Dataset):
 
     @staticmethod
     def get_default_transforms() -> Compose:
-        return Compose([
-            ToTensor(),
-            Resize(512, interpolation=F.InterpolationMode.BICUBIC),
-            RandomCrop(512),
-            RandomHorizontalFlip(0.5),
-            DivideValue(127.5),
-            AddValue(-1.0),
-        ])
+        return Compose(
+            [
+                ToTensor(),
+                Resize(512, interpolation=F.InterpolationMode.BICUBIC),
+                RandomCrop(512),
+                RandomHorizontalFlip(0.5),
+                DivideValue(127.5),
+                AddValue(-1.0),
+            ]
+        )
 
-    def add_load_additional(self, get: Callable, init: Optional[Callable] = None) -> None:
+    def add_load_additional(
+        self, get: Callable, init: Optional[Callable] = None
+    ) -> None:
         """Adds additional data that is loaded in __get_item__.
 
         :param get: This function is called in __get_item__ to load additional data. __get_item__ passes the item dict
@@ -129,13 +145,19 @@ class BaseDataset(Dataset):
         img = IO.read_image(image_path, mode=ImageReadMode.RGB)
 
         # Transform image
-        transforms = self.transforms if isinstance(self.transforms, List) else self.transforms.transforms
+        transforms = (
+            self.transforms
+            if isinstance(self.transforms, List)
+            else self.transforms.transforms
+        )
         for transform in transforms:
             if isinstance(transform, Resize):
                 img = transform(img)
                 item["orig_size"] = (img.shape[-2], img.shape[-1])
             elif isinstance(transform, RandomCrop):
-                top, left, crop_h, crop_w = RandomCrop.get_params(img, output_size=transform.size)
+                top, left, crop_h, crop_w = RandomCrop.get_params(
+                    img, output_size=transform.size
+                )
                 img = F.crop(img, top, left, crop_h, crop_w)
                 item["cropped_size"] = tuple(transform.size)
                 item["crop_coords_top_left"] = (top, left)
@@ -143,7 +165,10 @@ class BaseDataset(Dataset):
                 h, w = img.shape[1], img.shape[2]
                 img = transform(img)
                 item["cropped_size"] = tuple(transform.size)
-                item["crop_coords_top_left"] = (((h - transform.size[0]) // 2), ((w - transform.size[1]) // 2))
+                item["crop_coords_top_left"] = (
+                    ((h - transform.size[0]) // 2),
+                    ((w - transform.size[1]) // 2),
+                )
             elif isinstance(transform, RandomHorizontalFlip):
                 if random.random() < transform.p:
                     img = F.horizontal_flip(img)

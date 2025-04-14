@@ -1,20 +1,42 @@
 import os
 import random
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Union, Tuple, Set
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import torch as th
 import torch.nn.functional as F
-from tqdm import tqdm
 from diffusers import DDPMScheduler
 from diffusers.training_utils import compute_snr
 from lightning.pytorch import LightningModule
-from transformers import (
-    AutoTokenizer,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-)
+from tqdm import tqdm
+from transformers import AutoTokenizer, CLIPTextModel, CLIPTextModelWithProjection
+
+
+def compute_intermediate_loss(
+    pl_module: LightningModule,
+    res_pred: List[th.Tensor],
+    res_org: List[th.Tensor],
+    timesteps: th.Tensor,
+    snr_gamma: Optional[float] = None,
+):
+    if snr_gamma is not None:
+        snr = compute_snr(pl_module.noise_scheduler, timesteps)
+        snr_loss_weights = th.stack([snr, snr_gamma * th.ones_like(timesteps)], dim=1)
+        snr_loss_weights = snr_loss_weights.min(dim=1)
+        snr_loss_weights = snr_loss_weights[0]
+
+        if pl_module.noise_scheduler.config.prediction_type == "epsilon":
+            snr_loss_weights = snr_loss_weights / snr
+    else:
+        snr_loss_weights = th.ones_like(timesteps)
+
+    res_org = th.stack(res_org)
+    res_pred = th.stack(res_pred)
+    loss = F.mse_loss(res_pred.float(), res_org.float(), reduction="none")
+    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * snr_loss_weights
+    loss = loss.mean()
+    return loss
 
 
 def set_requires_grad(
@@ -43,10 +65,10 @@ def set_requires_grad(
 
 
 def prediction_to_img(
-        model_output: th.Tensor,
-        noisy_latent: th.Tensor,
-        timesteps: th.Tensor,
-        noise_scheduler: DDPMScheduler,
+    model_output: th.Tensor,
+    noisy_latent: th.Tensor,
+    timesteps: th.Tensor,
+    noise_scheduler: DDPMScheduler,
 ) -> th.Tensor:
     """Given the prediction output of the UNet, calculates the predicted image.
 
@@ -62,7 +84,9 @@ def prediction_to_img(
 
     # Compute original sample (x_0) from model prediction
     if noise_scheduler.config.prediction_type == "epsilon":
-        pred_img = (noisy_latent - (beta_prod_t ** 0.5) * model_output) / (alpha_prod_t ** 0.5)
+        pred_img = (noisy_latent - (beta_prod_t**0.5) * model_output) / (
+            alpha_prod_t**0.5
+        )
     elif noise_scheduler.config.prediction_type == "sample":
         pred_img = model_output
     elif noise_scheduler.config.prediction_type == "v_prediction":
@@ -79,10 +103,10 @@ def prediction_to_img(
 
 
 def prediction_to_noise(
-        model_output: th.Tensor,
-        noisy_latent: th.Tensor,
-        timesteps: th.Tensor,
-        noise_scheduler: DDPMScheduler,
+    model_output: th.Tensor,
+    noisy_latent: th.Tensor,
+    timesteps: th.Tensor,
+    noise_scheduler: DDPMScheduler,
 ) -> th.Tensor:
     """Given the prediction output of the UNet, calculates the predicted noise.
 
@@ -102,7 +126,9 @@ def prediction_to_noise(
     elif noise_scheduler.config.prediction_type == "sample":
         pred_noise = th.zeros_like(model_output)
     elif noise_scheduler.config.prediction_type == "v_prediction":
-        pred_noise = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * noisy_latent
+        pred_noise = (alpha_prod_t**0.5) * model_output + (
+            beta_prod_t**0.5
+        ) * noisy_latent
     else:
         raise ValueError(
             f"prediction_type given as {noise_scheduler.config.prediction_type} must be one of `epsilon`, `sample` or"
@@ -152,7 +178,9 @@ def compute_generator_loss(
         snr_loss_weights = th.ones_like(timesteps)
 
     if loss_type == "mse":
-        target = _get_mse_target(orig_img, orig_noise, pl_module.noise_scheduler, timesteps)
+        target = _get_mse_target(
+            orig_img, orig_noise, pl_module.noise_scheduler, timesteps
+        )
         loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
         loss = loss.mean(dim=list(range(1, len(loss.shape)))) * snr_loss_weights
         loss = loss.mean()
@@ -172,14 +200,22 @@ def compute_generator_loss(
         ).long()
 
         # Renoise predicted image with predicted noise
-        x_pred_renoised = pl_module.noise_scheduler.add_noise(model_pred_img, model_pred_noise, renoising_timesteps)
+        x_pred_renoised = pl_module.noise_scheduler.add_noise(
+            model_pred_img, model_pred_noise, renoising_timesteps
+        )
 
         # Renoise original image with original noise
-        x_orig_renoised = pl_module.noise_scheduler.add_noise(orig_img, orig_noise, renoising_timesteps)
+        x_orig_renoised = pl_module.noise_scheduler.add_noise(
+            orig_img, orig_noise, renoising_timesteps
+        )
 
         # Extract perceptual features
-        x_pred_features = pl_module.feature_extractor(x_pred_renoised, renoising_timesteps, batch)
-        x_orig_features = pl_module.feature_extractor(x_orig_renoised, renoising_timesteps, batch)
+        x_pred_features = pl_module.feature_extractor(
+            x_pred_renoised, renoising_timesteps, batch
+        )
+        x_orig_features = pl_module.feature_extractor(
+            x_orig_renoised, renoising_timesteps, batch
+        )
 
         loss = F.mse_loss(x_pred_features, x_orig_features, reduction="mean")
     elif loss_type == "none":
@@ -191,7 +227,10 @@ def compute_generator_loss(
 
 
 def _get_mse_target(
-    latent: th.Tensor, noise: th.Tensor, noise_scheduler: DDPMScheduler, timesteps: th.IntTensor
+    latent: th.Tensor,
+    noise: th.Tensor,
+    noise_scheduler: DDPMScheduler,
+    timesteps: th.IntTensor,
 ) -> th.Tensor:
     """Computes target to calculate loss against.
 
@@ -210,7 +249,9 @@ def _get_mse_target(
     elif noise_scheduler.config.prediction_type == "v_prediction":
         return noise_scheduler.get_velocity(latent, noise, timesteps)
     else:
-        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+        raise ValueError(
+            f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+        )
 
 
 @contextmanager
@@ -242,7 +283,9 @@ def temprngstate(new_seed: Optional[int] = None) -> None:
     random.setstate(old_python_rng_state)
 
 
-def encode_prompt(model_name: str, prompt: str, squeeze: bool = True) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
+def encode_prompt(
+    model_name: str, prompt: str, squeeze: bool = True
+) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
     """Encodes a prompt for a model.
 
     :param model_name: Huggingface model name to encode prompt for.
@@ -274,12 +317,11 @@ def encode_prompt(model_name: str, prompt: str, squeeze: bool = True) -> Union[t
         text_encoder_one.requires_grad_(False)
         text_encoder_two.requires_grad_(False)
 
-
         def enc_prompt(prompt: str):
             prompt_embeds_list = []
 
             for tokenizer, text_encoder in zip(
-                    [tokenizer_one, tokenizer_two], [text_encoder_one, text_encoder_two]
+                [tokenizer_one, tokenizer_two], [text_encoder_one, text_encoder_two]
             ):
                 tokens = tokenizer(
                     prompt,
@@ -310,6 +352,7 @@ def encode_prompt(model_name: str, prompt: str, squeeze: bool = True) -> Union[t
                 return prompt_embeds.squeeze(0), pooled_prompt_embeds.squeeze(0)
             else:
                 return prompt_embeds, pooled_prompt_embeds
+
     else:  # SD1.5 or SD2.1
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
@@ -350,7 +393,9 @@ def encode_prompt(model_name: str, prompt: str, squeeze: bool = True) -> Union[t
     return enc_prompt(prompt, tokenizer, text_encoder)
 
 
-def encode_prompts(model_name: str, prompt_dict: Dict[Any, str], pad_tokens: bool = True) -> Dict[Any, Tuple[str, th.Tensor]]:
+def encode_prompts(
+    model_name: str, prompt_dict: Dict[Any, str], pad_tokens: bool = True
+) -> Dict[Any, Tuple[str, th.Tensor]]:
     """Encode a dictionary of prompts (key=img_file_name, value=prompt)
 
     :param model_name: Huggingface model name to encode prompt for.
@@ -398,7 +443,9 @@ def encode_prompts(model_name: str, prompt_dict: Dict[Any, str], pad_tokens: boo
 
                 # If not padding tokens remove startoftext and endoftext tokens (do they have any meaning for SD anyway?)
                 if not pad_tokens:
-                    raise NotImplementedError("Check tokenizer for the correct number of padding tokens")
+                    raise NotImplementedError(
+                        "Check tokenizer for the correct number of padding tokens"
+                    )
                     tokens = tokens[tokens != 49406 and tokens != 49407]
 
                 prompt_embeds = text_encoder(tokens, output_hidden_states=True)
@@ -413,7 +460,12 @@ def encode_prompts(model_name: str, prompt_dict: Dict[Any, str], pad_tokens: boo
             prompt_embeds = th.concat(prompt_embeds_list, dim=-1)
             pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
 
-            return prompt, prompt_embeds.squeeze(0).cpu(), pooled_prompt_embeds.squeeze(0).cpu()
+            return (
+                prompt,
+                prompt_embeds.squeeze(0).cpu(),
+                pooled_prompt_embeds.squeeze(0).cpu(),
+            )
+
     else:  # SD1.5 or SD2.1
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
@@ -463,8 +515,8 @@ def encode_prompts(model_name: str, prompt_dict: Dict[Any, str], pad_tokens: boo
 
 
 def move_tensors_to_device(
-        data: Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]],
-        device: th.device
+    data: Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]],
+    device: th.device,
 ) -> Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]]:
     """Recursively move all torch.Tensor objects in a dictionary or other nested structures to the specified device.
 
@@ -476,7 +528,9 @@ def move_tensors_to_device(
     if isinstance(data, th.Tensor):
         return data.to(device)
     elif isinstance(data, dict):
-        return {key: move_tensors_to_device(value, device) for key, value in data.items()}
+        return {
+            key: move_tensors_to_device(value, device) for key, value in data.items()
+        }
     elif isinstance(data, list):
         return [move_tensors_to_device(item, device) for item in data]
     elif isinstance(data, tuple):
@@ -488,8 +542,8 @@ def move_tensors_to_device(
 
 
 def change_tensors_to_dtype(
-        data: Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]],
-        dtype: th.dtype
+    data: Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]],
+    dtype: th.dtype,
 ) -> Union[th.Tensor, Dict[Any, Any], List[Any], Tuple[Any], Set[Any]]:
     """Recursively change dtype of all torch.Tensor objects in a dictionary or other nested structures.
 
@@ -501,7 +555,9 @@ def change_tensors_to_dtype(
     if isinstance(data, th.Tensor):
         return data.to(dtype)
     elif isinstance(data, dict):
-        return {key: change_tensors_to_dtype(value, dtype) for key, value in data.items()}
+        return {
+            key: change_tensors_to_dtype(value, dtype) for key, value in data.items()
+        }
     elif isinstance(data, list):
         return [change_tensors_to_dtype(item, dtype) for item in data]
     elif isinstance(data, tuple):

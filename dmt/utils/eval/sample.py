@@ -7,30 +7,30 @@ import wandb
 from diffusers.schedulers import DDIMScheduler
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
-from torchvision.transforms.v2.functional import resize, InterpolationMode
+from torchvision.transforms.v2.functional import InterpolationMode, resize
 from torchvision.utils import save_image
 from tqdm import tqdm
 
-from dmt.utils import temprngstate, move_tensors_to_device, change_tensors_to_dtype
+from dmt.utils import change_tensors_to_dtype, move_tensors_to_device, temprngstate
 
 
 @th.inference_mode()
 def sample_images(
-        lit_module: LightningModule,
-        trainer: Trainer,
-        sample_dir: Optional[str] = None,
-        save_wandb: bool = True,
-        save_local: bool = False,
-        num_steps: int = 50,
-        num_batches: int = 1,
-        batch_size: int = 1,
-        modes: List[str] = ["cond"],
-        split: str = "val",
-        shuffle: bool = False,
-        seed: Optional[int] = None,
-        cfg_guidance_scale: float = 4.0,
-        cfg_guidance_rescale: float = 0.7,
-        use_float16: bool = True,
+    lit_module: LightningModule,
+    trainer: Trainer,
+    sample_dir: Optional[str] = None,
+    save_wandb: bool = True,
+    save_local: bool = False,
+    num_steps: int = 50,
+    num_batches: int = 1,
+    batch_size: int = 1,
+    modes: List[str] = ["cond"],
+    split: str = "val",
+    shuffle: bool = False,
+    seed: Optional[int] = None,
+    cfg_guidance_scale: float = 4.0,
+    cfg_guidance_rescale: float = 0.7,
+    use_float16: bool = False,
 ) -> None:
     """Samples images.
 
@@ -53,9 +53,15 @@ def sample_images(
     with temprngstate(seed):
         # Get dataloader
         dataloaders = {
-            "train": lambda: trainer.datamodule.train_dataloader(batch_size=batch_size, shuffle=shuffle),
-            "val": lambda: trainer.datamodule.val_dataloader(batch_size=batch_size, full_dataset=True, shuffle=shuffle),
-            "test": lambda: trainer.datamodule.test_dataloader(batch_size=batch_size, shuffle=shuffle)
+            "train": lambda: trainer.datamodule.train_dataloader(
+                batch_size=batch_size, shuffle=shuffle
+            ),
+            "val": lambda: trainer.datamodule.val_dataloader(
+                batch_size=batch_size, full_dataset=True, shuffle=shuffle
+            ),
+            "test": lambda: trainer.datamodule.test_dataloader(
+                batch_size=batch_size, shuffle=shuffle
+            ),
         }
         dataloader = dataloaders[split]()
         assert dataloader, f"Dataloader for split {split} is None."
@@ -76,17 +82,29 @@ def sample_images(
             clip_sample_range=config.clip_sample_range,
             sample_max_value=config.sample_max_value,
             timestep_spacing=config.timestep_spacing,
-            rescale_betas_zero_snr=config.rescale_betas_zero_snr
+            rescale_betas_zero_snr=config.rescale_betas_zero_snr,
         )
-        model = lit_module.unet_wrapper if not use_float16 else copy.deepcopy(lit_module.unet_wrapper).to(th.float16)
-        vae = lit_module.vae_wrapper if not use_float16 else copy.deepcopy(lit_module.vae_wrapper).to(th.float16)
+        model = (
+            lit_module.unet_wrapper
+            if not use_float16
+            else copy.deepcopy(lit_module.unet_wrapper).to(th.float16)
+        )
+        vae = (
+            lit_module.vae_wrapper
+            if not use_float16
+            else copy.deepcopy(lit_module.vae_wrapper).to(th.float16)
+        )
+        custome_unet_flag = lit_module.custome_unet_flag
+        latent_dataset = lit_module.latent_dataset
         model.eval()
 
         # Prepare timesteps
         scheduler.set_timesteps(num_steps, device=device)
         timesteps = scheduler.timesteps
 
-        pbar = tqdm(total=len(modes) * num_batches * batch_size, desc="Sampling images...")
+        pbar = tqdm(
+            total=len(modes) * num_batches * batch_size, desc="Sampling images..."
+        )
         for mode in modes:
             assert mode in ("uncond", "cond", "cfg")
 
@@ -102,25 +120,65 @@ def sample_images(
                     batch = change_tensors_to_dtype(batch, th.float16)
 
                 # Prepare latents
-                shape = (
-                    batch_size,
-                    4,
-                    int(batch["pixel_values"].shape[2]) // 8,
-                    int(batch["pixel_values"].shape[3]) // 8,
-                )
+                if latent_dataset:
+                    shape = (
+                        batch_size,
+                        4,
+                        int(batch["pixel_values"].shape[2]),
+                        int(batch["pixel_values"].shape[3]),
+                    )
+                else:
+                    shape = (
+                        batch_size,
+                        4,
+                        int(batch["pixel_values"].shape[2]) // 8,
+                        int(batch["pixel_values"].shape[3]) // 8,
+                    )
                 latents = th.randn(shape, device=device, dtype=model.unet.dtype)
 
                 # Denoising loop
                 samples = latents
                 for t in timesteps:
-                    if  mode == "cond" or mode == "cfg":
-                        pred_cond = model(samples, t, batch, cn_dropout=0.0, txt_dropout=0.0)
-                    if  mode == "uncond" or mode == "cfg":
-                        pred_uncond = model(samples, t, copy.deepcopy(batch), cn_dropout=0.0, txt_dropout=1.0)
+                    if mode == "cond" or mode == "cfg":
+                        if custome_unet_flag:
+                            pred_cond, _out, _in = model(
+                                samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
+                            )
+                        else:
+                            pred_cond = model(
+                                samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
+                            )
+                    if mode == "uncond" or mode == "cfg":
+                        if custome_unet_flag:
+                            pred_uncond, _out, _in = model(
+                                samples,
+                                t,
+                                copy.deepcopy(batch),
+                                cn_dropout=0.0,
+                                txt_dropout=1.0,
+                            )
+                        else:
+                            pred_uncond = model(
+                                samples,
+                                t,
+                                copy.deepcopy(batch),
+                                cn_dropout=0.0,
+                                txt_dropout=1.0,
+                            )
 
                     if mode == "cfg":
-                        pred = pred_uncond + cfg_guidance_scale * (pred_cond - pred_uncond)
-                        pred = rescale_noise_cfg(pred, pred_cond, guidance_rescale=cfg_guidance_rescale if config.rescale_betas_zero_snr else 0.0)
+                        pred = pred_uncond + cfg_guidance_scale * (
+                            pred_cond - pred_uncond
+                        )
+                        pred = rescale_noise_cfg(
+                            pred,
+                            pred_cond,
+                            guidance_rescale=(
+                                cfg_guidance_rescale
+                                if config.rescale_betas_zero_snr
+                                else 0.0
+                            ),
+                        )
                     else:
                         pred = pred_cond if mode == "cond" else pred_uncond
 
@@ -139,16 +197,25 @@ def sample_images(
                     cond_imgs = (batch["pixel_values"] / 2 + 0.5).clamp(0, 1)
                     cond_h, cond_w = cond_imgs.shape[-2], cond_imgs.shape[-1]
                     if lit_module.unet_wrapper.cond_key != "pixel_values":
-                        cond_img = resize(batch[lit_module.unet_wrapper.cond_key] / 255.0,
-                                                [cond_imgs.shape[-2], cond_imgs.shape[-1]],
-                                                InterpolationMode.NEAREST_EXACT)
+                        cond_img = resize(
+                            batch[lit_module.unet_wrapper.cond_key] / 255.0,
+                            [cond_imgs.shape[-2], cond_imgs.shape[-1]],
+                            InterpolationMode.NEAREST_EXACT,
+                        )
                         cond_imgs = th.cat((cond_img, cond_imgs), dim=-1)
                     if "panoptic_img" in batch:
-                        panoptic_image = resize(batch["panoptic_img"] / 255.0,
-                                                [cond_h, cond_w], InterpolationMode.NEAREST_EXACT)
+                        panoptic_image = resize(
+                            batch["panoptic_img"] / 255.0,
+                            [cond_h, cond_w],
+                            InterpolationMode.NEAREST_EXACT,
+                        )
                         cond_imgs = th.cat((panoptic_image, cond_imgs), dim=-1)
                     if "moe_binary_mask" in batch:
-                        moe_mask = resize(batch["moe_binary_mask"], [cond_h, cond_w], InterpolationMode.NEAREST_EXACT)
+                        moe_mask = resize(
+                            batch["moe_binary_mask"],
+                            [cond_h, cond_w],
+                            InterpolationMode.NEAREST_EXACT,
+                        )
                         moe_mask = moe_mask.unsqueeze(dim=1).repeat(1, 3, 1, 1)
                         cond_imgs = th.cat((moe_mask, cond_imgs), dim=-1)
                     cond_images.append(cond_imgs.float().cpu())
@@ -160,15 +227,28 @@ def sample_images(
             conds = th.cat(cond_images, dim=0) if "uncond" not in mode else None
 
             if save_wandb and isinstance(trainer.logger, WandbLogger):
-                wandb_images = th.cat((conds, samples), dim=-1) if conds is not None else samples
-                wandb_images = [wandb.Image(wandb_images[idx], caption=f"idx={idx}") for idx in range(wandb_images.shape[0])]
+                if latent_dataset:
+                    wandb_images = samples
+                else:
+                    wandb_images = (
+                        th.cat((conds, samples), dim=-1)
+                        if conds is not None
+                        else samples
+                    )
+                wandb_images = [
+                    wandb.Image(wandb_images[idx], caption=f"idx={idx}")
+                    for idx in range(wandb_images.shape[0])
+                ]
                 trainer.logger.experiment.log({f"{split}/samples_{mode}": wandb_images})
 
             if save_local:
                 assert sample_dir is not None
                 os.makedirs(os.path.join(sample_dir, mode), exist_ok=True)
                 for i in range(samples.shape[0]):
-                    save_image(samples[i], os.path.join(sample_dir, mode, f"img_{mode}_{i}.png"))
+                    save_image(
+                        samples[i],
+                        os.path.join(sample_dir, mode, f"img_{mode}_{i}.png"),
+                    )
 
         model.train()
         if use_float16:
@@ -181,11 +261,15 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
     if guidance_rescale > 0.0:
-        std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+        std_text = noise_pred_text.std(
+            dim=list(range(1, noise_pred_text.ndim)), keepdim=True
+        )
         std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
         # rescale the results from guidance (fixes overexposure)
         noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
         # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-        noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+        noise_cfg = (
+            guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+        )
 
     return noise_cfg

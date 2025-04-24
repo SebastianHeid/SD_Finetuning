@@ -31,6 +31,7 @@ class LitBaseModule(LightningModule):
         # Models, Optimizer and Scheduler
         model_name: str,
         unet: UNetWrapper,
+        ref_unet: UNetWrapper,
         vae: VaeWrapper,
         optimizer: partial,
         scheduler: partial,
@@ -76,6 +77,7 @@ class LitBaseModule(LightningModule):
         super().__init__()
 
         self.unet_wrapper = unet
+        self.ref_unet_wrapper = ref_unet
         self.vae_wrapper = vae
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
@@ -262,14 +264,14 @@ class LitBaseModule(LightningModule):
         ############################
         # Model prediction and conversion to img (e.g. from noise or v)
         if self.custome_unet_flag:
-            pred, res_pred, res_org = self.unet_wrapper(noisy_latent, timesteps, batch)
-            pred_noise = prediction_to_noise(
-                pred, noisy_latent, timesteps, self.noise_scheduler
-            )
-            pred_img = prediction_to_img(
-                pred, noisy_latent, timesteps, self.noise_scheduler
-            )
+            pred, res_pred = self.unet_wrapper(noisy_latent, timesteps, batch)
             if self.unet_wrapper.loss_final_output_flag:
+                pred_noise = prediction_to_noise(
+                    pred, noisy_latent, timesteps, self.noise_scheduler
+                )
+                pred_img = prediction_to_img(
+                    pred, noisy_latent, timesteps, self.noise_scheduler
+                )
                 final_output_loss = compute_generator_loss(
                     self,
                     timesteps,
@@ -283,10 +285,20 @@ class LitBaseModule(LightningModule):
                     snr_gamma=self.snr_gamma,
                 )
             if self.unet_wrapper.loss_intermediate_output_flag:
+                _, res_ref = self.ref_unet_wrapper(noisy_latent, timesteps, batch)
+                down_block = self.unet_wrapper.down_block_int_loss
+                res_block = self.unet_wrapper.res_block_int_loss
+                int_pred = [
+                    res_pred[down_block[i]][res_block[i]]
+                    for i in range(len(down_block))
+                ]
+                int_ref = [
+                    res_ref[down_block[i]][res_block[i]] for i in range(len(down_block))
+                ]
                 intermediate_output_loss = compute_intermediate_loss(
                     self,
-                    res_pred,
-                    res_org,
+                    int_pred,
+                    int_ref,
                     timesteps,
                     snr_gamma=self.snr_gamma,
                 )

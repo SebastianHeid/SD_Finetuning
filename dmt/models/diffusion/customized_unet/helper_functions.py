@@ -7,7 +7,15 @@ from customed_classes import (
     Down3Res1,
     IdentityBlock,
 )
-from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, DownBlock2D
+from customed_mid_block_classes import CustomUNetMidBlock2DCrossAttn
+from customed_up_block_classes import CustomCrossAttnUpBlock2D, CustomUpBlock2D
+from diffusers.models.unets.unet_2d_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    DownBlock2D,
+    UNetMidBlock2DCrossAttn,
+    UpBlock2D,
+)
 
 
 def get_configs(path: str):
@@ -16,7 +24,9 @@ def get_configs(path: str):
     return configs
 
 
-def resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks):
+def resnets_set_weights(
+    unet, remove_downsample_blocks, remove_resnet_blocks, att_block_trainable
+):
     unet.requires_grad_(False)
 
     blocks = []
@@ -35,15 +45,19 @@ def resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks):
             res_block_num = 0
 
         blocks.append(unet.down_blocks[down_block_num].resnets[res_block_num])
+        if (
+            att_block_trainable and down_block_num != 3
+        ):  # the fourht down block does not contain attention layers
+            blocks.append(unet.down_blocks[down_block_num].attentions[res_block_num])
 
     for block in blocks:
         for param in block.parameters():
             param.requires_grad = True
 
 
-def replace_blocks_in_unet(unet, config_json):
+def replace_downblocks_in_unet(unet, config_json):
     """Replace all CrossAttnDownBlock2D blocks with custom versions"""
-    print("Replacing blocks in UNet")
+    print("Replacing down blocks in UNet")
     configs = get_configs(config_json)
 
     for i, down_block in enumerate(unet.down_blocks):
@@ -67,11 +81,51 @@ def replace_blocks_in_unet(unet, config_json):
             unet.down_blocks[i] = custom_block
 
 
+def replace_midblocks_in_unet(unet, config_json):
+    """Replace all CrossAttnDownBlock2D blocks with custom versions"""
+    print("Replacing mid blocks in UNet")
+    config = get_configs(config_json)
+
+    if isinstance(unet.mid_block, UNetMidBlock2DCrossAttn):
+        custom_block = CustomUNetMidBlock2DCrossAttn(**config)
+
+        # Copy all weights
+        custom_block.load_state_dict(unet.mid_block.state_dict())
+
+        # Replace in UNet
+        unet.mid_block = custom_block
+
+
+def replace_upblocks_in_unet(unet, config_json):
+    """Replace all CrossAttnDownBlock2D blocks with custom versions"""
+    print("Replacing blocks in UNet")
+    configs = get_configs(config_json)
+
+    for i, up_block in enumerate(unet.up_blocks):
+        config = configs[i]
+        if isinstance(up_block, UpBlock2D):
+            custom_block = CustomUpBlock2D(**config)
+
+            # Copy all weights
+            custom_block.load_state_dict(up_block.state_dict())
+
+            # Replace in UNet
+            unet.up_blocks[i] = custom_block
+
+        if isinstance(up_block, CrossAttnUpBlock2D):
+            custom_block = CustomCrossAttnUpBlock2D(**config)
+
+            # Copy all weights
+            custom_block.load_state_dict(up_block.state_dict())
+
+            # Replace in UNet
+            unet.up_blocks[i] = custom_block
+
+
 def remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks):
     assert len(remove_downsample_blocks) == len(
         remove_resnet_blocks
     ), "Number of downsample_blocks and resnet_blocks must be equal"
-    removed_resnet_layers = []
     for i in range(len(remove_downsample_blocks)):
         down_block_num = remove_downsample_blocks[i]
         res_block_num = remove_resnet_blocks[i]
@@ -81,8 +135,4 @@ def remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks):
             place_holder_module = Down3Res1()
         else:
             place_holder_module = IdentityBlock()
-        removed_resnet_layers.append(
-            unet.down_blocks[down_block_num].resnets[res_block_num]
-        )
         unet.down_blocks[down_block_num].resnets[res_block_num] = place_holder_module
-    return removed_resnet_layers

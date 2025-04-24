@@ -11,6 +11,5 @@ from dmt.models.diffusion.customized_unet.customed_unet import (
 from dmt.models.diffusion.customized_unet.helper_functions import (
     get_configs,
     remove_resnet_layers,
-    replace_blocks_in_unet,
     resnets_set_weights,
 )

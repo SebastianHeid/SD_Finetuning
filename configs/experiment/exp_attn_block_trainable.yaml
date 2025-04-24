@@ -1,6 +1,6 @@
 # @package _global_
 seed: 100
-task_name: experiment
+task_name: attn_block_trainable
 
 callbacks:
   model_checkpoint:
@@ -24,19 +24,19 @@ callbacks:
     delete_samples: false
   test_callback:
     eval_cmmd: true
-    eval_fid: false
-    eval_kid: false
+    eval_fid: true
+    eval_kid: true
     cond: false
     uncond: false
     cfg: true
 
 data:
-  batch_size: 16 #
+  batch_size: 32 #
   gradient_accumulation: 1 #
 
   persistent_workers: false
   pin_memory: false
-  num_workers: 1 #
+  num_workers: 16 #
 
   num_val: 100 #
   num_stable_train: 100 #
@@ -47,7 +47,7 @@ logger:
     name: ${task_name}
 
 trainer:
-  max_epochs: 10 #
+  max_epochs: 20 #
   reload_dataloaders_every_n_epochs: 9999999
   val_check_interval: 0.1 #
   devices: 1
@@ -59,27 +59,25 @@ model:
   zero_snr: false
   snr_gamma: null
   latent_dataset: True
-  
+
   unet:
     custome_unet_flag: True
-    down_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
-    up_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_UpBlock.json"
-    mid_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_MidBlocks.json"
+    config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
     remove_downsample_blocks: [1] 
     remove_resnet_blocks: [1]
     loss_intermediate_output_flag: False 
     loss_final_output_flag: True
-    att_block_trainable: False
+    down_block_int_loss: [1] # which features of the intermediate layers should be used for loss computation
+    res_block_int_loss: [1] # should be features from a block further appart
+    att_block_trainable: True
   
   ref_unet:
     custome_unet_flag: True
-    down_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
-    up_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_UpBlock.json"
-    mid_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_MidBlocks.json"
+    config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
     remove_downsample_blocks: [] 
     remove_resnet_blocks: []
-    att_block_trainable: False
-
+    
+  
   gradient_checkpointing: true
 
 
@@ -92,3 +90,5 @@ model:
     T_max: ${trainer.max_epochs} # Same value as set above for trainer
     eta_min: 0.0
     last_epoch: -1
+
+

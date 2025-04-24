@@ -43,7 +43,6 @@ def downsample(
             res_inputs += (res_in,)
         down_block_res_samples += res_samples
 
-    # return sample, down_block_res_samples, res_outputs
     return sample, down_block_res_samples, res_outputs, res_inputs
 
 
@@ -55,6 +54,7 @@ def upsample(
     down_block_res_samples: Tuple[torch.Tensor, ...],
     upsample_size: Optional[Tuple[int, int]] = None,
 ):
+    up_outs = ()
     for i, upsample_block in enumerate(self.up_blocks):
 
         res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
@@ -64,7 +64,7 @@ def upsample(
             hasattr(upsample_block, "has_cross_attention")
             and upsample_block.has_cross_attention
         ):
-            sample = upsample_block(
+            sample, up_out = upsample_block(
                 hidden_states=sample,
                 temb=emb,
                 res_hidden_states_tuple=res_samples,
@@ -75,13 +75,14 @@ def upsample(
                 encoder_attention_mask=None,
             )
         else:
-            sample = upsample_block(
+            sample, up_out = upsample_block(
                 hidden_states=sample,
                 temb=emb,
                 res_hidden_states_tuple=res_samples,
                 upsample_size=upsample_size,
             )
-    return sample
+        up_outs += (up_out,)
+    return sample, up_outs
 
 
 def unet_forward(
@@ -120,7 +121,7 @@ def unet_forward(
     sample = self.conv_in(sample)
 
     # 3. down
-    sample, down_block_res_samples, res_outputs, res_inputs = downsample(
+    sample, down_block_res_samples, down_outs, res_inputs = downsample(
         self, emb, sample, encoder_hidden_states
     )
 
@@ -130,7 +131,7 @@ def unet_forward(
             hasattr(self.mid_block, "has_cross_attention")
             and self.mid_block.has_cross_attention
         ):
-            sample = self.mid_block(
+            sample, mid_out = self.mid_block(
                 sample,
                 emb,
                 encoder_hidden_states=encoder_hidden_states,
@@ -139,15 +140,19 @@ def unet_forward(
                 encoder_attention_mask=None,
             )
         else:
-            sample = self.mid_block(sample, emb)
+            sample, mid_out = self.mid_block(sample, emb)
+        # res_outputs.append(sample)
 
     # 5. up
-    sample = upsample(self, emb, sample, encoder_hidden_states, down_block_res_samples)
+    sample, up_outs = upsample(
+        self, emb, sample, encoder_hidden_states, down_block_res_samples
+    )
     # 6. post-process
     if self.conv_norm_out:
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
     sample = self.conv_out(sample)
 
-    return sample, down_block_res_samples, res_outputs, res_inputs, emb
+    res_outputs = down_outs + mid_out + up_outs
+    return sample, down_block_res_samples, res_outputs, res_inputs
     # return UNet2DConditionOutput(sample=sample)

@@ -1,0 +1,21 @@
+# @package _global_
+defaults:
+  - base_experiment
+
+# Every variable from base_experiment (or other top-level configs) can be overwritten here
+callbacks:
+  eval_callback:
+    eval_freq: 1000000000000000000000000000000
+
+task_name: exp_nf_i_d_2_r_0
+model:
+  unet:
+    custome_unet_flag: True
+    remove_downsample_blocks: [2] 
+    remove_resnet_blocks: [0]
+    loss_intermediate_output_flag: True 
+    loss_final_output_flag: False
+    # this is now in the up block
+    down_block_int_loss: [2] # which features of the intermediate layers should be used for loss computation
+    res_block_int_loss: [0] # should be features from a block further appart
+  

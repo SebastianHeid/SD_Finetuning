@@ -5,13 +5,12 @@ from typing import List, Optional
 import torch as th
 import wandb
 from diffusers.schedulers import DDIMScheduler
+from dmt.utils import change_tensors_to_dtype, move_tensors_to_device, temprngstate
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from torchvision.transforms.v2.functional import InterpolationMode, resize
 from torchvision.utils import save_image
 from tqdm import tqdm
-
-from dmt.utils import change_tensors_to_dtype, move_tensors_to_device, temprngstate
 
 
 @th.inference_mode()
@@ -50,6 +49,7 @@ def sample_images(
     :param cfg_guidance_rescale: The rescale factor for CFG. Should only be used when ZeroSNR is activated.
     :param use_float16: If true, sample with float16 instead of float32.
     """
+    batch_size = 1
     with temprngstate(seed):
         # Get dataloader
         dataloaders = {
@@ -135,57 +135,57 @@ def sample_images(
                         int(batch["pixel_values"].shape[3]) // 8,
                     )
                 latents = th.randn(shape, device=device, dtype=model.unet.dtype)
-
                 # Denoising loop
                 samples = latents
-                for t in timesteps:
-                    if mode == "cond" or mode == "cfg":
-                        if custome_unet_flag:
-                            pred_cond, _out, _in = model(
-                                samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
+                with th.no_grad():
+                    for t in timesteps:
+                        if mode == "cond" or mode == "cfg":
+                            if custome_unet_flag:
+                                pred_cond, _out = model(
+                                    samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
+                                )
+                            else:
+                                pred_cond = model(
+                                    samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
+                                )
+                        if mode == "uncond" or mode == "cfg":
+                            if custome_unet_flag:
+                                pred_uncond, _out = model(
+                                    samples,
+                                    t,
+                                    copy.deepcopy(batch),
+                                    cn_dropout=0.0,
+                                    txt_dropout=1.0,
+                                )
+                            else:
+                                pred_uncond = model(
+                                    samples,
+                                    t,
+                                    copy.deepcopy(batch),
+                                    cn_dropout=0.0,
+                                    txt_dropout=1.0,
+                                )
+
+                        if mode == "cfg":
+                            pred = pred_uncond + cfg_guidance_scale * (
+                                pred_cond - pred_uncond
+                            )
+                            pred = rescale_noise_cfg(
+                                pred,
+                                pred_cond,
+                                guidance_rescale=(
+                                    cfg_guidance_rescale
+                                    if config.rescale_betas_zero_snr
+                                    else 0.0
+                                ),
                             )
                         else:
-                            pred_cond = model(
-                                samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
-                            )
-                    if mode == "uncond" or mode == "cfg":
-                        if custome_unet_flag:
-                            pred_uncond, _out, _in = model(
-                                samples,
-                                t,
-                                copy.deepcopy(batch),
-                                cn_dropout=0.0,
-                                txt_dropout=1.0,
-                            )
-                        else:
-                            pred_uncond = model(
-                                samples,
-                                t,
-                                copy.deepcopy(batch),
-                                cn_dropout=0.0,
-                                txt_dropout=1.0,
-                            )
+                            pred = pred_cond if mode == "cond" else pred_uncond
 
-                    if mode == "cfg":
-                        pred = pred_uncond + cfg_guidance_scale * (
-                            pred_cond - pred_uncond
-                        )
-                        pred = rescale_noise_cfg(
-                            pred,
-                            pred_cond,
-                            guidance_rescale=(
-                                cfg_guidance_rescale
-                                if config.rescale_betas_zero_snr
-                                else 0.0
-                            ),
-                        )
-                    else:
-                        pred = pred_cond if mode == "cond" else pred_uncond
+                        samples = scheduler.step(pred, t, samples, return_dict=False)[0]
 
-                    samples = scheduler.step(pred, t, samples, return_dict=False)[0]
-
-                # Decoding
-                images = vae.decode(samples)
+                    # Decoding
+                    images = vae.decode(samples)
 
                 # Postprocessing
                 images = (images / 2 + 0.5).clamp(0, 1)

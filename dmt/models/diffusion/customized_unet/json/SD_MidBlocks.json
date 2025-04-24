@@ -1,0 +1,21 @@
+    {
+        "in_channels": 1280,
+        "temb_channels": 1280,
+        "out_channels": null,
+        "dropout": 0.0,
+        "num_layers": 1,
+        "transformer_layers_per_block": 1,
+        "resnet_eps": 1e-05,
+        "resnet_time_scale_shift": "default",
+        "resnet_act_fn": "silu",
+        "resnet_groups": 32,
+        "resnet_groups_out": null,
+        "resnet_pre_norm": true,
+        "num_attention_heads": 20,
+        "output_scale_factor": 1,
+        "cross_attention_dim": 1024,
+        "dual_cross_attention": false,
+        "use_linear_projection": true,
+        "upcast_attention": true,
+        "attention_type": "default"
+    }

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch as th
 import torch.nn as nn
 from diffusers.models import UNet2DConditionModel, UNetControlNetXSModel
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from peft import LoraConfig, PeftModel, get_peft_model
 from safetensors.torch import load_model
 
@@ -16,7 +17,9 @@ from dmt.models.diffusion.customized_unet.customed_unet import (
 )
 from dmt.models.diffusion.customized_unet.helper_functions import (
     remove_resnet_layers,
-    replace_blocks_in_unet,
+    replace_downblocks_in_unet,
+    replace_midblocks_in_unet,
+    replace_upblocks_in_unet,
     resnets_set_weights,
 )
 
@@ -45,7 +48,8 @@ class UNetWrapper(nn.Module):
         remove_resnet_blocks: List[int] = [],
         loss_intermediate_output_flag: bool = False,
         loss_final_output_flag: bool = False,
-        list_removed_resent_blocks: List = [],
+        down_block_int_loss: List = [],
+        res_block_int_loss: List = [],
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -72,7 +76,8 @@ class UNetWrapper(nn.Module):
         self.loss_final_output_flag = loss_final_output_flag
         self.remove_downsample_blocks = remove_downsample_blocks
         self.remove_resnet_blocks = remove_resnet_blocks
-        self.list_removed_resent_blocks = list_removed_resent_blocks
+        self.down_block_int_loss = down_block_int_loss
+        self.res_block_int_loss = res_block_int_loss
 
     def do_cn_dropout(
         self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
@@ -210,10 +215,7 @@ class UNetWrapper(nn.Module):
                 region_dict["self_attn_mask"] = batch["self_attn_mask"]
 
             if self.custome_unet_flag:
-                res_pred = []
-                res_org = []
-                res_in = []
-                sample, res_outputs, res_inputs, emb = self.unet(
+                sample, res_outputs = self.unet(
                     noisy_latent,
                     timesteps,
                     encoder_hidden_states=prompt_emb,
@@ -222,24 +224,8 @@ class UNetWrapper(nn.Module):
                     ),
                     **cond_kwargs,
                 )
-                if self.loss_intermediate_output_flag:
-                    for i in range(len(self.remove_downsample_blocks)):
-                        down_block_num = self.remove_downsample_blocks[i]
-                        res_block_num = self.remove_resnet_blocks[i]
-                        res_pred.append(res_outputs[down_block_num][res_block_num])
-                        if res_block_num == 0:
-                            down_block_num -= 1
-                            res_block_num = -1
-                        elif res_block_num == 1:
-                            res_block_num = 0
-                        res_in.append(res_inputs[down_block_num][res_block_num])
-                    for i in range(len(self.list_removed_resent_blocks)):
-                        res_org.append(
-                            self.list_removed_resent_blocks[i](res_in[i], emb)
-                        )
 
-                    return sample, res_pred, res_org
-                return sample, [], []
+                return sample, res_outputs
 
             else:
                 model_pred = self.unet(
@@ -319,11 +305,16 @@ def init_unet(
     keep_base_frozen: bool = False,
     ckpt_path: str = None,
     custome_unet_flag: bool = False,
-    config_json: str = "",
+    down_config_json: str = "",
+    mid_config_json: str = "",
+    up_config_json: str = "",
     remove_downsample_blocks: List[int] = [],
     remove_resnet_blocks: List[int] = [],
     loss_intermediate_output_flag: bool = False,
     loss_final_output_flag: bool = False,
+    down_block_int_loss: List = [],
+    res_block_int_loss: List = [],
+    att_block_trainable: bool = False,
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -363,16 +354,11 @@ def init_unet(
         )
         unet = ModifiedUNet2DConditionModel(**sd_unet.config)
         unet.load_state_dict(sd_unet.state_dict())
-        replace_blocks_in_unet(unet, config_json)
-        list_removed_resent_blocks = remove_resnet_layers(
-            unet, remove_downsample_blocks, remove_resnet_blocks
-        )
+        replace_downblocks_in_unet(unet, down_config_json)
+        replace_midblocks_in_unet(unet, mid_config_json)
+        replace_upblocks_in_unet(unet, up_config_json)
+        remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks)
         # obtain GT for intermediate features
-        if loss_intermediate_output_flag:
-            ref_unet = ModifiedUNet2DConditionModel(**sd_unet.config)
-            ref_unet.load_state_dict(sd_unet.state_dict())
-            replace_blocks_in_unet(ref_unet, config_json)
-            ref_unet.requires_grad_(False)
         del sd_unet
 
     else:
@@ -510,7 +496,9 @@ def init_unet(
             unet.conv_in.weight.requires_grad = True
 
     if custome_unet_flag:
-        resnets_set_weights(unet, remove_downsample_blocks, remove_resnet_blocks)
+        resnets_set_weights(
+            unet, remove_downsample_blocks, remove_resnet_blocks, att_block_trainable
+        )
 
     unet.train()
 
@@ -518,39 +506,23 @@ def init_unet(
     zero_txt_emb = encode_prompt(model_name, "", False)
 
     if custome_unet_flag:
-        return [
-            UNetWrapper(
-                unet,
-                model_name,
-                cond_mechanism,
-                cond_key,
-                cn_cond_scale,
-                cn_dropout,
-                txt_dropout,
-                zero_txt_emb,
-                custome_unet_flag,
-                remove_downsample_blocks,
-                remove_resnet_blocks,
-                loss_intermediate_output_flag,
-                loss_final_output_flag,
-                list_removed_resent_blocks,
-            ),
-            UNetWrapper(
-                ref_unet,
-                model_name,
-                cond_mechanism,
-                cond_key,
-                cn_cond_scale,
-                cn_dropout,
-                txt_dropout,
-                zero_txt_emb,
-                custome_unet_flag,
-                remove_downsample_blocks,
-                remove_resnet_blocks,
-                loss_intermediate_output_flag,
-                loss_final_output_flag,
-            ),
-        ]
+        return UNetWrapper(
+            unet,
+            model_name,
+            cond_mechanism,
+            cond_key,
+            cn_cond_scale,
+            cn_dropout,
+            txt_dropout,
+            zero_txt_emb,
+            custome_unet_flag,
+            remove_downsample_blocks,
+            remove_resnet_blocks,
+            loss_intermediate_output_flag,
+            loss_final_output_flag,
+            down_block_int_loss,
+            res_block_int_loss,
+        )
 
     else:
         return UNetWrapper(

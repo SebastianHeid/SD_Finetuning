@@ -30,7 +30,7 @@ unet:
   cn_dropout: 0.0
   txt_dropout: 0.1
   custome_unet_flag: false
-  att_block_trainable: false
+
 
 ref_unet:
   _target_: dmt.models.diffusion.unet.init_unet
@@ -48,7 +48,7 @@ ref_unet:
   cn_dropout: 0.0
   txt_dropout: 0.1
   custome_unet_flag: false
-  att_block_trainable: false
+
 
 vae:
   _target_: dmt.models.diffusion.vae.init_vae

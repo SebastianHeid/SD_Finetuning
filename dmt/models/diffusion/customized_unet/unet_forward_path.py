@@ -16,7 +16,6 @@ def downsample(
     res_outputs = ()
     res_inputs = ()
     for blk_ind, downsample_block in enumerate(self.down_blocks):
-        # print(blk_ind + 1, ". Downsample Block")
         if (
             hasattr(downsample_block, "has_cross_attention")
             and downsample_block.has_cross_attention
@@ -56,7 +55,6 @@ def upsample(
 ):
     up_outs = ()
     for i, upsample_block in enumerate(self.up_blocks):
-
         res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
         down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
@@ -124,7 +122,6 @@ def unet_forward(
     sample, down_block_res_samples, down_outs, res_inputs = downsample(
         self, emb, sample, encoder_hidden_states
     )
-
     # 4. mid
     if self.mid_block is not None:
         if (
@@ -142,11 +139,12 @@ def unet_forward(
         else:
             sample, mid_out = self.mid_block(sample, emb)
         # res_outputs.append(sample)
-
+    mid_out = (mid_out,)
     # 5. up
     sample, up_outs = upsample(
         self, emb, sample, encoder_hidden_states, down_block_res_samples
     )
+
     # 6. post-process
     if self.conv_norm_out:
         sample = self.conv_norm_out(sample)

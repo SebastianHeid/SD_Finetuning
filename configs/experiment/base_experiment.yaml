@@ -65,20 +65,14 @@ model:
     down_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
     up_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_UpBlock.json"
     mid_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_MidBlocks.json"
-    remove_downsample_blocks: [1] 
-    remove_resnet_blocks: [1]
-    loss_intermediate_output_flag: False 
-    loss_final_output_flag: True
-    att_block_trainable: False
+  
   
   ref_unet:
     custome_unet_flag: True
     down_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_DownBlocks.json"
     up_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_UpBlock.json"
     mid_config_json: "/export/home/sheid/SD_Finetuning/dmt/models/diffusion/customized_unet/json/SD_MidBlocks.json"
-    remove_downsample_blocks: [] 
-    remove_resnet_blocks: []
-    att_block_trainable: False
+
 
   gradient_checkpointing: true
 

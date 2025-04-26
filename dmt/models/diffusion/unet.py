@@ -16,11 +16,15 @@ from dmt.models.diffusion.customized_unet.customed_unet import (
     ModifiedUNet2DConditionModel,
 )
 from dmt.models.diffusion.customized_unet.helper_functions import (
-    remove_resnet_layers,
+    down_set_weights,
+    mid_set_weights,
+    remove_down_blocks,
+    remove_mid_blocks,
+    remove_up_blocks,
     replace_downblocks_in_unet,
     replace_midblocks_in_unet,
     replace_upblocks_in_unet,
-    resnets_set_weights,
+    up_set_weights,
 )
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -44,12 +48,10 @@ class UNetWrapper(nn.Module):
         txt_dropout: float = 0.0,
         zero_txt_emb: Optional[th.Tensor] = None,
         custome_unet_flag: bool = False,
-        remove_downsample_blocks: List[int] = [],
-        remove_resnet_blocks: List[int] = [],
-        loss_intermediate_output_flag: bool = False,
-        loss_final_output_flag: bool = False,
-        down_block_int_loss: List = [],
-        res_block_int_loss: List = [],
+        final_loss_flag: bool = False,
+        intermediate_res_loss_flag: bool = False,
+        intermediate_res_loss_stage: List = [],
+        intermediate_res_loss_block: List = [],
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -72,12 +74,10 @@ class UNetWrapper(nn.Module):
         self.txt_dropout = txt_dropout
         self.zero_txt_emb = zero_txt_emb
         self.custome_unet_flag = custome_unet_flag
-        self.loss_intermediate_output_flag = loss_intermediate_output_flag
-        self.loss_final_output_flag = loss_final_output_flag
-        self.remove_downsample_blocks = remove_downsample_blocks
-        self.remove_resnet_blocks = remove_resnet_blocks
-        self.down_block_int_loss = down_block_int_loss
-        self.res_block_int_loss = res_block_int_loss
+        self.intermediate_res_loss_flag = intermediate_res_loss_flag
+        self.final_loss_flag = final_loss_flag
+        self.intermediate_res_loss_stage = intermediate_res_loss_stage
+        self.intermediate_res_loss_block = intermediate_res_loss_block
 
     def do_cn_dropout(
         self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
@@ -308,13 +308,30 @@ def init_unet(
     down_config_json: str = "",
     mid_config_json: str = "",
     up_config_json: str = "",
-    remove_downsample_blocks: List[int] = [],
-    remove_resnet_blocks: List[int] = [],
-    loss_intermediate_output_flag: bool = False,
-    loss_final_output_flag: bool = False,
-    down_block_int_loss: List = [],
-    res_block_int_loss: List = [],
-    att_block_trainable: bool = False,
+    down_res_stage: List[int] = [],
+    down_res_block: List[int] = [],
+    down_att_stage: List[int] = [],
+    down_att_block: List[int] = [],
+    mid_res_block: List[int] = [],
+    mid_att_block: List[int] = [],
+    up_res_stage: List[int] = [],
+    up_res_block: List[int] = [],
+    up_att_stage: List[int] = [],
+    up_att_block: List[int] = [],
+    down_res_stage_train: List[int] = [],
+    down_res_block_train: List[int] = [],
+    down_att_stage_train: List[int] = [],
+    down_att_block_train: List[int] = [],
+    mid_res_block_train: List[int] = [],
+    mid_att_block_train: List[int] = [],
+    up_res_stage_train: List[int] = [],
+    up_res_block_train: List[int] = [],
+    up_att_stage_train: List[int] = [],
+    up_att_block_train: List[int] = [],
+    final_loss_flag: bool = False,
+    intermediate_res_loss_flag: bool = False,
+    intermediate_res_loss_stage: List = [],
+    intermediate_res_loss_block: bool = False,
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -357,7 +374,11 @@ def init_unet(
         replace_downblocks_in_unet(unet, down_config_json)
         replace_midblocks_in_unet(unet, mid_config_json)
         replace_upblocks_in_unet(unet, up_config_json)
-        remove_resnet_layers(unet, remove_downsample_blocks, remove_resnet_blocks)
+        remove_down_blocks(
+            unet, down_res_stage, down_res_block, down_att_stage, down_att_block
+        )
+        remove_mid_blocks(unet, mid_res_block, mid_att_block)
+        remove_up_blocks(unet, up_res_stage, up_res_block, up_att_stage, up_att_block)
         # obtain GT for intermediate features
         del sd_unet
 
@@ -496,8 +517,20 @@ def init_unet(
             unet.conv_in.weight.requires_grad = True
 
     if custome_unet_flag:
-        resnets_set_weights(
-            unet, remove_downsample_blocks, remove_resnet_blocks, att_block_trainable
+        down_set_weights(
+            unet,
+            down_res_stage_train,
+            down_res_block_train,
+            down_att_stage_train,
+            down_att_block_train,
+        )
+        mid_set_weights(unet, mid_res_block_train, mid_att_block_train)
+        up_set_weights(
+            unet,
+            up_res_stage_train,
+            up_res_block_train,
+            up_att_stage_train,
+            up_att_block_train,
         )
 
     unet.train()
@@ -516,12 +549,10 @@ def init_unet(
             txt_dropout,
             zero_txt_emb,
             custome_unet_flag,
-            remove_downsample_blocks,
-            remove_resnet_blocks,
-            loss_intermediate_output_flag,
-            loss_final_output_flag,
-            down_block_int_loss,
-            res_block_int_loss,
+            final_loss_flag,
+            intermediate_res_loss_flag,
+            intermediate_res_loss_stage,
+            intermediate_res_loss_block,
         )
 
     else:

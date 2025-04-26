@@ -6,23 +6,23 @@ defaults:
 callbacks:
   eval_callback:
     eval_freq: 1000000000000000000000000000000
-trainer:
-  max_epochs: 4
-task_name: exp_f_ni_d_3_r_0
+
+
+task_name: exp11_nf_i_d_1_r_1
 model:
   unet:
-    ckpt_path: "/export/data/sheid/diffusion_training/exp_f_ni_d_3_r_0/runs/2025-04-23_12-05-25/checkpoints/epoch_epoch=000_model/diffusion_pytorch_model.safetensors"
+    ckpt_path: "/export/data/sheid/diffusion_training/exp11_nf_i_d_1_r_1/runs/2025-04-22_08-27-16/checkpoints/epoch_epoch=006_model/diffusion_pytorch_model.safetensors"
     custome_unet_flag: True
-    final_loss_flag: True
+    final_loss_flag: False
     
     # feature loss
-    intermediate_res_loss_flag: False
-    intermediate_res_loss_stage: []
-    intermediate_res_loss_block: []
+    intermediate_res_loss_flag: True
+    intermediate_res_loss_stage: [7]
+    intermediate_res_loss_block: [0]
 
     # blocks to remove
-    down_res_stage: [3] # 0-3
-    down_res_block: [0] # 0-1
+    down_res_stage: [1] # 0-3
+    down_res_block: [1] # 0-1
     down_att_stage: [] # 0-2
     down_att_block: [] # 0-1
 
@@ -36,8 +36,8 @@ model:
     up_att_block: [] # 0-2
     
     # trainable blocks
-    down_res_stage_train: [2] # 0-3
-    down_res_block_train: [1] # 0-1
+    down_res_stage_train: [1] # 0-3
+    down_res_block_train: [0] # 0-1
     down_att_stage_train: [] # 0-2
     down_att_block_train: [] # 0-1
 

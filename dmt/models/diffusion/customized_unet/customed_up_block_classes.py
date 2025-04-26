@@ -162,7 +162,6 @@ class CustomCrossAttnUpBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
-
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
 
@@ -315,5 +314,4 @@ class CustomCrossAttnUpBlock2D(nn.Module):
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
-
         return hidden_states, resnet_out_states

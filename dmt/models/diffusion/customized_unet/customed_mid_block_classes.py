@@ -133,6 +133,7 @@ class CustomUNetMidBlock2DCrossAttn(nn.Module):
         resnet_out_states = ()
         hidden_states = self.resnets[0](hidden_states, temb)
         resnet_out_states += (hidden_states,)
+        idx = 0
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -174,5 +175,4 @@ class CustomUNetMidBlock2DCrossAttn(nn.Module):
                 )[0]
                 hidden_states = resnet(hidden_states, temb)
                 resnet_out_states += (hidden_states,)
-
         return hidden_states, resnet_out_states

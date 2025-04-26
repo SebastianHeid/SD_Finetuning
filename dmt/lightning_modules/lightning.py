@@ -51,7 +51,6 @@ class LitBaseModule(LightningModule):
         continue_epoch: Optional[int] = None,
         continue_step: Optional[int] = None,
         latent_dataset: bool = False,
-        custome_unet_flag: bool = False,
     ) -> None:
         """Init the Training Loop
 
@@ -265,7 +264,7 @@ class LitBaseModule(LightningModule):
         # Model prediction and conversion to img (e.g. from noise or v)
         if self.custome_unet_flag:
             pred, res_pred = self.unet_wrapper(noisy_latent, timesteps, batch)
-            if self.unet_wrapper.loss_final_output_flag:
+            if self.unet_wrapper.final_loss_flag:
                 pred_noise = prediction_to_noise(
                     pred, noisy_latent, timesteps, self.noise_scheduler
                 )
@@ -284,10 +283,10 @@ class LitBaseModule(LightningModule):
                     loss_type=self.loss_type,
                     snr_gamma=self.snr_gamma,
                 )
-            if self.unet_wrapper.loss_intermediate_output_flag:
+            if self.unet_wrapper.intermediate_res_loss_flag:
                 _, res_ref = self.ref_unet_wrapper(noisy_latent, timesteps, batch)
-                down_block = self.unet_wrapper.down_block_int_loss
-                res_block = self.unet_wrapper.res_block_int_loss
+                down_block = self.unet_wrapper.intermediate_res_loss_stage
+                res_block = self.unet_wrapper.intermediate_res_loss_block
                 int_pred = [
                     res_pred[down_block[i]][res_block[i]]
                     for i in range(len(down_block))
@@ -303,16 +302,16 @@ class LitBaseModule(LightningModule):
                     snr_gamma=self.snr_gamma,
                 )
             if (
-                self.unet_wrapper.loss_final_output_flag
-                and self.unet_wrapper.loss_intermediate_output_flag
+                self.unet_wrapper.final_loss_flag
+                and self.unet_wrapper.intermediate_res_loss_flag
             ):
                 return intermediate_output_loss + final_output_loss
-            elif self.unet_wrapper.loss_final_output_flag:
+            elif self.unet_wrapper.final_loss_flag:
                 return final_output_loss
-            elif self.unet_wrapper.loss_intermediate_output_flag:
+            elif self.unet_wrapper.intermediate_res_loss_flag:
                 return intermediate_output_loss
             else:
-                raise "Need to set either loss_intermediate_output_flag loss or loss_final_output_flag loss Ture."
+                raise "Need to set either intermediate_res_loss_flag loss or final_loss_flag loss Ture."
 
         else:
             pred = self.unet_wrapper(noisy_latent, timesteps, batch)

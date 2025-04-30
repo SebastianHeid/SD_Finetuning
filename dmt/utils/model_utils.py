@@ -39,6 +39,36 @@ def compute_intermediate_loss(
     return loss
 
 
+def compute_intermediate_block_loss(
+    pl_module: LightningModule,
+    res_pred: List[th.Tensor],
+    res_org: List[th.Tensor],
+    timesteps: th.Tensor,
+    snr_gamma: Optional[float] = None,
+):
+    if snr_gamma is not None:
+        snr = compute_snr(pl_module.noise_scheduler, timesteps)
+        snr_loss_weights = th.stack([snr, snr_gamma * th.ones_like(timesteps)], dim=1)
+        snr_loss_weights = snr_loss_weights.min(dim=1)
+        snr_loss_weights = snr_loss_weights[0]
+
+        if pl_module.noise_scheduler.config.prediction_type == "epsilon":
+            snr_loss_weights = snr_loss_weights / snr
+    else:
+        snr_loss_weights = th.ones_like(timesteps)
+
+    loss_list = []
+    for i in range(len(res_pred)):
+            l = F.mse_loss(res_pred[i].float(), res_org[i].float(), reduction="none")
+            l = l.mean(dim=list(range(1, l.ndim)))  # reduce over non-batch dims
+            loss_list.append(l)  # shape: [B]
+    loss = th.stack(loss_list, dim=0)  # shape: [N_blocks, B]
+    loss = loss.mean(dim=0)           # mean across blocks → shape: [B]
+    loss = loss * snr_loss_weights    # apply per-sample weights → shape: [B]
+    loss = loss.mean() 
+    return loss
+
+
 def set_requires_grad(
     module: th.nn.Module, requires_grad: bool, parameter_list: Optional[List] = None
 ) -> List[str]:

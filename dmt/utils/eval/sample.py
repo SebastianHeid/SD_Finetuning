@@ -141,7 +141,7 @@ def sample_images(
                     for t in timesteps:
                         if mode == "cond" or mode == "cfg":
                             if custome_unet_flag:
-                                pred_cond, _out = model(
+                                pred_cond, _out,_ = model(
                                     samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
                                 )
                             else:
@@ -150,7 +150,7 @@ def sample_images(
                                 )
                         if mode == "uncond" or mode == "cfg":
                             if custome_unet_flag:
-                                pred_uncond, _out = model(
+                                pred_uncond, _out,_ = model(
                                     samples,
                                     t,
                                     copy.deepcopy(batch),

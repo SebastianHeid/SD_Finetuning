@@ -243,4 +243,4 @@ def remove_up_blocks(
         up_block_num = attn_stage[i]
         attn_block_num = attn_block[i]
         place_holder_module = IdentityBlockAttn()
-        unet.down_blocks[up_block_num].attentions[attn_block_num] = place_holder_module
+        unet.up_blocks[up_block_num].attentions[attn_block_num] = place_holder_module

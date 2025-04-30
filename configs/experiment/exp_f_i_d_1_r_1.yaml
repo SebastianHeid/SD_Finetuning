@@ -38,8 +38,8 @@ model:
     up_att_block: [] # 0-2
     
     # trainable blocks
-    down_res_stage_train: [1] # 0-3
-    down_res_block_train: [0] # 0-1
+    down_res_stage_train: [1,1] # 0-3
+    down_res_block_train: [0,1] # 0-1
     down_att_stage_train: [] # 0-2
     down_att_block_train: [] # 0-1
 

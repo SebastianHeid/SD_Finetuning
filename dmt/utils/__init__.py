@@ -5,6 +5,7 @@ from dmt.utils.instantiators import instantiate_callbacks, instantiate_loggers
 from dmt.utils.model_utils import (
     change_tensors_to_dtype,
     compute_generator_loss,
+    compute_intermediate_block_loss,
     compute_intermediate_loss,
     encode_prompt,
     move_tensors_to_device,

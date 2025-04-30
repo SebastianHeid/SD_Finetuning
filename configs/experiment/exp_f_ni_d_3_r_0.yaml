@@ -11,7 +11,6 @@ trainer:
 task_name: exp_f_ni_d_3_r_0
 model:
   unet:
-    ckpt_path: "/export/data/sheid/diffusion_training/exp_f_ni_d_3_r_0/runs/2025-04-23_12-05-25/checkpoints/epoch_epoch=000_model/diffusion_pytorch_model.safetensors"
     custome_unet_flag: True
     final_loss_flag: True
     
@@ -36,8 +35,8 @@ model:
     up_att_block: [] # 0-2
     
     # trainable blocks
-    down_res_stage_train: [2] # 0-3
-    down_res_block_train: [1] # 0-1
+    down_res_stage_train: [2,3] # 0-3
+    down_res_block_train: [1,0] # 0-1
     down_att_stage_train: [] # 0-2
     down_att_block_train: [] # 0-1
 

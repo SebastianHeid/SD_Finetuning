@@ -52,6 +52,8 @@ class UNetWrapper(nn.Module):
         intermediate_res_loss_flag: bool = False,
         intermediate_res_loss_stage: List = [],
         intermediate_res_loss_block: List = [],
+        block_loss_flag: bool = False,
+        block_loss_stages: List = [],
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -78,6 +80,8 @@ class UNetWrapper(nn.Module):
         self.final_loss_flag = final_loss_flag
         self.intermediate_res_loss_stage = intermediate_res_loss_stage
         self.intermediate_res_loss_block = intermediate_res_loss_block
+        self.block_loss_flag = block_loss_flag
+        self.block_loss_stages = block_loss_stages
 
     def do_cn_dropout(
         self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
@@ -215,7 +219,7 @@ class UNetWrapper(nn.Module):
                 region_dict["self_attn_mask"] = batch["self_attn_mask"]
 
             if self.custome_unet_flag:
-                sample, res_outputs = self.unet(
+                sample, res_outputs, block_outputs = self.unet(
                     noisy_latent,
                     timesteps,
                     encoder_hidden_states=prompt_emb,
@@ -225,7 +229,7 @@ class UNetWrapper(nn.Module):
                     **cond_kwargs,
                 )
 
-                return sample, res_outputs
+                return sample, res_outputs, block_outputs
 
             else:
                 model_pred = self.unet(
@@ -332,6 +336,9 @@ def init_unet(
     intermediate_res_loss_flag: bool = False,
     intermediate_res_loss_stage: List = [],
     intermediate_res_loss_block: bool = False,
+    all_blocks_trainable: bool = False,
+    block_loss_flag: bool = False,
+    block_loss_stages: List = [],
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -517,21 +524,24 @@ def init_unet(
             unet.conv_in.weight.requires_grad = True
 
     if custome_unet_flag:
-        down_set_weights(
-            unet,
-            down_res_stage_train,
-            down_res_block_train,
-            down_att_stage_train,
-            down_att_block_train,
-        )
-        mid_set_weights(unet, mid_res_block_train, mid_att_block_train)
-        up_set_weights(
-            unet,
-            up_res_stage_train,
-            up_res_block_train,
-            up_att_stage_train,
-            up_att_block_train,
-        )
+        if all_blocks_trainable:
+            unet.requires_grad_(True)
+        else:
+            down_set_weights(
+                unet,
+                down_res_stage_train,
+                down_res_block_train,
+                down_att_stage_train,
+                down_att_block_train,
+            )
+            mid_set_weights(unet, mid_res_block_train, mid_att_block_train)
+            up_set_weights(
+                unet,
+                up_res_stage_train,
+                up_res_block_train,
+                up_att_stage_train,
+                up_att_block_train,
+            )
 
     unet.train()
 
@@ -553,6 +563,8 @@ def init_unet(
             intermediate_res_loss_flag,
             intermediate_res_loss_stage,
             intermediate_res_loss_block,
+            block_loss_flag,
+            block_loss_stages,
         )
 
     else:

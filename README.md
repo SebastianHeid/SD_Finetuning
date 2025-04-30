@@ -142,17 +142,6 @@ generate the scores in the thesis and are presented in the thesis.
 
 
 
-On hcigpu05
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=2 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_3_r_0
-
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_3_r_1
-
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_4_r_0
-
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_4_r_1
-
-OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_5_r_0
-
 
 on hcigpu06
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_5_r_1
@@ -174,7 +163,7 @@ OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3 python /export/home
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_7_r_2
 
 
-on hcigpu08
+on compgpu9
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_8_r_0
 
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_8_r_1
@@ -182,3 +171,35 @@ OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python /export/home
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_8_r_2
 
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_i_d_1_r_1
+
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_2_r_0
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_2_r_1
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_1_r_0
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_0_r_1
+
+
+compgpu10
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_4_r_0
+
+compgpu7
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_4_r_1
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper
+
+
+compgpu9
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_5_r_0
+
+
+
+compgpu11
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_3_r_0
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_3_r_1
+
+compgpu8
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_lr6
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock

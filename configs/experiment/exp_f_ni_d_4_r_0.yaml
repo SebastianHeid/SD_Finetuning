@@ -8,7 +8,7 @@ callbacks:
     eval_freq: 1000000000000000000000000000000
 trainer:
   max_epochs: 5
-task_name: exp_f_ni_d_3_r_1
+task_name: exp_f_ni_d_4_r_0
 model:
   
   unet:
@@ -41,7 +41,7 @@ model:
     down_att_stage_train: [] # 0-2
     down_att_block_train: [] # 0-1
 
-    mid_res_block_train: [] # 0-1
+    mid_res_block_train: [0] # 0-1
     mid_att_block_train: [] #
 
     up_res_stage_train: [] # 0-3

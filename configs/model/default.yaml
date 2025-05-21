@@ -60,6 +60,10 @@ optimizer:
   lr: 2e-5
   betas: [0.9, 0.999]
 
+text_embedder:
+  _target_: dmt.models.diffusion.text_embedder.init_text_embedder
+  path_to_network: /export/scratch/sheid/models/stable-diffusion-2-1-base
+
 scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
   _partial_: true

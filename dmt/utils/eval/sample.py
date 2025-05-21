@@ -5,12 +5,13 @@ from typing import List, Optional
 import torch as th
 import wandb
 from diffusers.schedulers import DDIMScheduler
-from dmt.utils import change_tensors_to_dtype, move_tensors_to_device, temprngstate
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger
 from torchvision.transforms.v2.functional import InterpolationMode, resize
 from torchvision.utils import save_image
 from tqdm import tqdm
+
+from dmt.utils import change_tensors_to_dtype, move_tensors_to_device, temprngstate
 
 
 @th.inference_mode()
@@ -141,7 +142,7 @@ def sample_images(
                     for t in timesteps:
                         if mode == "cond" or mode == "cfg":
                             if custome_unet_flag:
-                                pred_cond, _out,_ = model(
+                                pred_cond, _, _, _ = model(
                                     samples, t, batch, cn_dropout=0.0, txt_dropout=0.0
                                 )
                             else:
@@ -150,7 +151,7 @@ def sample_images(
                                 )
                         if mode == "uncond" or mode == "cfg":
                             if custome_unet_flag:
-                                pred_uncond, _out,_ = model(
+                                pred_uncond, _, _, _ = model(
                                     samples,
                                     t,
                                     copy.deepcopy(batch),

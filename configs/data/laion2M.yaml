@@ -1,0 +1,21 @@
+defaults:
+  - default
+
+
+dataset_dir: "/export/data/vislearn/rother_subgroup/rother_datasets/LaionAE/"
+
+train_dataset:
+  _target_: dmt.data.LAION_dataset.Laion2MioDataset
+  dataset_dir: ${data.dataset_dir}
+  split_txt: "/export/home/sheid/SD_Finetuning/train_split.txt"
+
+val_dataset:
+  _target_: dmt.data.LAION_dataset.Laion2MioDataset
+  dataset_dir: ${data.dataset_dir}
+  split_txt: "/export/home/sheid/SD_Finetuning/val_split_reduced.txt"
+
+test_dataset:
+  _target_: dmt.data.LAION_dataset.Laion2MioDataset
+  dataset_dir: ${data.dataset_dir}
+  split_txt: "/export/home/sheid/SD_Finetuning/test_split_reduced.txt"
+

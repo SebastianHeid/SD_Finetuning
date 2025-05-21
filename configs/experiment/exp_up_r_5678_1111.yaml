@@ -1,0 +1,65 @@
+# @package _global_
+defaults:
+  - base_experiment
+
+# Every variable from base_experiment (or other top-level configs) can be overwritten here
+callbacks:
+  eval_callback:
+    eval_freq: 1000000000000000000000000000000
+trainer:
+  max_epochs: 10
+task_name: exp_up_r_5678_1111
+model:
+  unet:
+    ckpt_path: "/export/data/sheid/diffusion_training/exp_ro_0123_1111_a012_111_finetuning/runs/2025-05-19_08-09-29/checkpoints/epoch_epoch=004_model/diffusion_pytorch_model.safetensors"
+    custome_unet_flag: True
+    org_loss_flag: True
+    final_dis_flag: True
+    
+    # feature loss
+    feature_loss_normalization_flag: True
+    block_loss_flag: False
+    block_loss_stages: [] # 0-9
+    # feature loss
+    intermediate_res_loss_flag: True
+    intermediate_res_loss_stage: [5,6,7,8] # 0-8: 0-3: down stage, 4: mid stage, 5-8: up stage
+    intermediate_res_loss_block: [1,1,1,1]
+
+    intermediate_attn_loss_flag: False # just take the loss after the attention block because we removed res+att pair
+    intermediate_attn_loss_stage: [] # 0-8: 0-3: down stage, 4: mid stage, 5-8: up stage
+    intermediate_attn_loss_block: []
+
+
+    # blocks to remove
+    down_res_stage: [0,1,2,3] # 0-3
+    down_res_block: [1,1,1,1] # 0-1
+    down_att_stage: [0,1,2] # 0-2
+    down_att_block: [1,1,1] # 0-1
+
+    
+    mid_res_block: [] # 0-1
+    mid_att_block: [] # 0
+
+    up_res_stage: [0,1,2,3] # 0-3
+    up_res_block: [1,1,1,1] # 0-2
+    up_att_stage: [] # 1-3
+    up_att_block: [] # 0-2
+    
+    # trainable blocks
+    all_blocks_trainable: False
+    down_res_stage_train: [] # 0-3
+    down_res_block_train: [] # 0-1
+    down_att_stage_train: [] # 0-2
+    down_att_block_train: [] # 0-1
+
+    mid_res_block_train: [] # 0-1
+    mid_att_block_train: [] #
+
+    up_res_stage_train: [0,1,2,3] # 0-3
+    up_res_block_train: [0,0,0,0] # 0-2
+    up_att_stage_train: [] # 1-3
+    up_att_block_train: [] # 0-2
+
+
+  ref_unet:
+    custome_unet_flag: True

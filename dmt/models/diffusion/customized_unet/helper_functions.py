@@ -120,7 +120,7 @@ def replace_downblocks_in_unet(unet, config_json):
             custom_block = CustomAttnDownBlock2D(**config)
 
             # Copy all weights
-            custom_block.load_state_dict(down_block.state_dict())
+            custom_block.load_state_dict(down_block.state_dict(), strict=False)
 
             # Replace in UNet
             unet.down_blocks[i] = custom_block
@@ -129,7 +129,7 @@ def replace_downblocks_in_unet(unet, config_json):
             custom_block = CustomDownBlock2D(**config)
 
             # Copy all weights
-            custom_block.load_state_dict(down_block.state_dict())
+            custom_block.load_state_dict(down_block.state_dict(), strict=False)
 
             # Replace in UNet
             unet.down_blocks[i] = custom_block
@@ -144,7 +144,7 @@ def replace_midblocks_in_unet(unet, config_json):
         custom_block = CustomUNetMidBlock2DCrossAttn(**config)
 
         # Copy all weights
-        custom_block.load_state_dict(unet.mid_block.state_dict())
+        custom_block.load_state_dict(unet.mid_block.state_dict(), strict=False)
 
         # Replace in UNet
         unet.mid_block = custom_block
@@ -161,7 +161,7 @@ def replace_upblocks_in_unet(unet, config_json):
             custom_block = CustomUpBlock2D(**config)
 
             # Copy all weights
-            custom_block.load_state_dict(up_block.state_dict())
+            custom_block.load_state_dict(up_block.state_dict(), strict=False)
 
             # Replace in UNet
             unet.up_blocks[i] = custom_block
@@ -170,7 +170,7 @@ def replace_upblocks_in_unet(unet, config_json):
             custom_block = CustomCrossAttnUpBlock2D(**config)
 
             # Copy all weights
-            custom_block.load_state_dict(up_block.state_dict())
+            custom_block.load_state_dict(up_block.state_dict(), strict=False)
 
             # Replace in UNet
             unet.up_blocks[i] = custom_block

@@ -4,7 +4,9 @@ import torch
 from diffusers import UNet2DConditionModel
 from torch.utils.data import Dataset
 from tqdm import tqdm
-
+from PIL import Image
+from torchvision import transforms
+import json
 
 class LAIONDataset(Dataset):
     def __init__(
@@ -20,27 +22,6 @@ class LAIONDataset(Dataset):
             self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")[:100]
         else:
             self.img_names = os.listdir(dataset_dir + "/" + split + "/latents")
-        # self.prompts = dict()
-
-        # print("Load prompts ...")
-        # self.prompts_emb = {
-        #     img_name: torch.load(
-        #         os.path.join(dataset_dir + "/" + split + "/txt_embs/" + img_name)
-        #     )["encoder_hidden_states"]
-        #     .float()
-        #     .detach()
-        #     for img_name in tqdm(self.img_names)
-        # }
-
-        # print("Load latents ...")
-        # self.latents = {
-        #     img_name: torch.load(
-        #         os.path.join(dataset_dir + "/" + split + "/latents/" + img_name)
-        #     )
-        #     .float()
-        #     .detach()
-        #     for img_name in tqdm(self.img_names)
-        # }
 
     def __getitem__(self, id: int):
         img_name = self.img_names[id]
@@ -59,6 +40,40 @@ class LAIONDataset(Dataset):
         return {
             "pixel_values": latent,  # Tensor (3, h, w) in range [-1, 1]
             "prompt_emb": prompt_emb,
+        }
+
+    def __len__(self):
+        return len(self.img_names)
+
+class Laion2MioDataset(Dataset):
+    def __init__(
+        self,
+        dataset_dir: str,
+        split_txt: str
+    ):
+        self.dataset_dir = dataset_dir
+        with open(split_txt, "r") as file:
+            self.img_names = [line.strip() for line in file]
+        with open(dataset_dir+"/joyPrompts_laion2B_en_aesthetic_train_split_captions.json", "r") as prompt_file:
+            self.prompts = json.load(prompt_file)
+        
+        self.transform = transforms.ToTensor()
+        self.resize = transforms.Resize(512)
+        self.crop = transforms.RandomCrop((512,512))
+
+    def __getitem__(self, id: int):
+        img_name = self.img_names[id]
+        
+        image = Image.open(self.dataset_dir + "/laion2B-en-art_512/" + img_name)
+        image_tensor = self.transform(image)
+        image_tensor = self.resize(image_tensor)
+        image_tensor = self.crop(image_tensor)
+        prompt = self.prompts[img_name.split(".")[0]]
+        
+          
+        return {
+            "pixel_values": image_tensor,  # Tensor (3, h, w) in range [-1, 1]
+            "prompt_emb": prompt,
         }
 
     def __len__(self):

@@ -203,3 +203,60 @@ compgpu8
 
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_lr6
 OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock
+
+
+
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_test
+
+compgpu 11
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_do_1_d_2_ro_1_r_1
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_1_2_r_1_1
+
+compgpu8
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_i_d_1_2_r_1_1
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_i_do_1_d_2_ro_1_r_1
+
+
+hcigpu05
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0,7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_0_r_1
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1,6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_1_r_0
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=2,5 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_2_r_0
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3,4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_f_ni_d_2_r_1
+
+hcigpu07
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=5,6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_nf_i_d_1_2_r_1_1
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3,4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_nf_i_do_1_d_2_ro_1_r_1
+
+
+
+
+
+
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=3 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock_withoutKD
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock_withoutOrgLoss
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock_withLayerLoss
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1,3 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock_withLayerLoss_withoutOrgLoss
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_on_arch_search_paper_withMidBlock_withBlockLoss_withLayerLossNorm
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=0 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_r_01_11_a_01_11
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_r_0123_1111
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=7 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_r_01_11_a_01_11_finetuning
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=6 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_r_0123_1111_finetuning
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=4 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_ro_01_11_r23_11_ao_01_11_a2_1
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=2 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_up_r_56_11_a_56_11
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_ro_0123_1111_a012_111_finetuning
+
+
+
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion2M experiment=exp_r_0123_1111_test
+
+
+OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 CUDA_VISIBLE_DEVICES=1 python /export/home/sheid/SD_Finetuning/dmt/train.py data=laion experiment=exp_up_r_5678_1111

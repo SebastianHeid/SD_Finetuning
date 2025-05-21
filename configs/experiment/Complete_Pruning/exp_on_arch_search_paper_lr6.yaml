@@ -1,0 +1,58 @@
+# @package _global_
+defaults:
+  - base_experiment
+
+# Every variable from base_experiment (or other top-level configs) can be overwritten here
+callbacks:
+  eval_callback:
+    eval_freq: 1000000000000000000000000000000
+trainer:
+  max_epochs: 10
+task_name: exp_on_arch_search_paper_lr6
+model:
+  optimizer:
+    lr: 2e-6
+  unet:
+    custome_unet_flag: True
+    final_loss_flag: True
+    
+    # feature loss
+    block_loss_flag: True
+    block_loss_stages: [0,1,2,3,4,5,6,7,8,9] # 0-9
+    intermediate_res_loss_flag: False
+    intermediate_res_loss_stage: []
+    intermediate_res_loss_block: []
+
+    # blocks to remove
+    down_res_stage: [0,1,2,3] # 0-3
+    down_res_block: [1,1,1,1] # 0-1
+    down_att_stage: [0,1,2] # 0-2
+    down_att_block: [1,1,1] # 0-1
+
+    
+    mid_res_block: [0,1] # 0-1
+    mid_att_block: [0] # 0
+
+    up_res_stage: [0,1,2,3] # 0-3
+    up_res_block: [1,1,1,1] # 0-2
+    up_att_stage: [1,2,3] # 1-3
+    up_att_block: [1,1,1] # 0-2
+    
+    # trainable blocks
+    all_blocks_trainable: True
+    down_res_stage_train: [] # 0-3
+    down_res_block_train: [] # 0-1
+    down_att_stage_train: [] # 0-2
+    down_att_block_train: [] # 0-1
+
+    mid_res_block_train: [] # 0-1
+    mid_att_block_train: [] #
+
+    up_res_stage_train: [] # 0-3
+    up_res_block_train: [] # 0-2
+    up_att_stage_train: [] # 1-3
+    up_att_block_train: [] # 0-2
+
+
+  ref_unet:
+    custome_unet_flag: True

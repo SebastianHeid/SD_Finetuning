@@ -48,12 +48,17 @@ class UNetWrapper(nn.Module):
         txt_dropout: float = 0.0,
         zero_txt_emb: Optional[th.Tensor] = None,
         custome_unet_flag: bool = False,
-        final_loss_flag: bool = False,
+        final_dis_flag: bool = False,
+        org_loss_flag: bool = False,
         intermediate_res_loss_flag: bool = False,
         intermediate_res_loss_stage: List = [],
         intermediate_res_loss_block: List = [],
+        intermediate_attn_loss_flag: bool = False,
+        intermediate_attn_loss_stage: List = [],
+        intermediate_attn_loss_block: List = [],
         block_loss_flag: bool = False,
         block_loss_stages: List = [],
+        feature_loss_normalization_flag: bool = False,
     ) -> None:
         """Init a UNet wrapper for SD.
 
@@ -77,11 +82,16 @@ class UNetWrapper(nn.Module):
         self.zero_txt_emb = zero_txt_emb
         self.custome_unet_flag = custome_unet_flag
         self.intermediate_res_loss_flag = intermediate_res_loss_flag
-        self.final_loss_flag = final_loss_flag
+        self.final_dis_flag = final_dis_flag
+        self.org_loss_flag = org_loss_flag
         self.intermediate_res_loss_stage = intermediate_res_loss_stage
         self.intermediate_res_loss_block = intermediate_res_loss_block
+        self.intermediate_attn_loss_flag = intermediate_attn_loss_flag
+        self.intermediate_attn_loss_stage = intermediate_attn_loss_stage
+        self.intermediate_attn_loss_block = intermediate_attn_loss_block
         self.block_loss_flag = block_loss_flag
         self.block_loss_stages = block_loss_stages
+        self.feature_loss_normalization_flag = feature_loss_normalization_flag
 
     def do_cn_dropout(
         self, cond: th.Tensor, dropout_overwrite: Optional[float] = None
@@ -219,7 +229,7 @@ class UNetWrapper(nn.Module):
                 region_dict["self_attn_mask"] = batch["self_attn_mask"]
 
             if self.custome_unet_flag:
-                sample, res_outputs, block_outputs = self.unet(
+                sample, res_outputs, attn_outputs, block_outputs = self.unet(
                     noisy_latent,
                     timesteps,
                     encoder_hidden_states=prompt_emb,
@@ -229,7 +239,7 @@ class UNetWrapper(nn.Module):
                     **cond_kwargs,
                 )
 
-                return sample, res_outputs, block_outputs
+                return sample, res_outputs, attn_outputs, block_outputs
 
             else:
                 model_pred = self.unet(
@@ -332,13 +342,18 @@ def init_unet(
     up_res_block_train: List[int] = [],
     up_att_stage_train: List[int] = [],
     up_att_block_train: List[int] = [],
-    final_loss_flag: bool = False,
+    org_loss_flag: bool = False,
+    final_dis_flag: bool = False,
     intermediate_res_loss_flag: bool = False,
     intermediate_res_loss_stage: List = [],
-    intermediate_res_loss_block: bool = False,
+    intermediate_res_loss_block: List = [],
+    intermediate_attn_loss_flag: bool = False,
+    intermediate_attn_loss_stage: List = [],
+    intermediate_attn_loss_block: List = [],
     all_blocks_trainable: bool = False,
     block_loss_flag: bool = False,
     block_loss_stages: List = [],
+    feature_loss_normalization_flag: bool = False,
 ) -> UNetWrapper:
     """Initializes the UNet part of SD and applies LoRA.
 
@@ -421,7 +436,9 @@ def init_unet(
     # Load optional checkpoint
     if ckpt_path is not None:
         log.info(f"Loading checkpoint {ckpt_path}..")
-        load_model(unet, ckpt_path, True)
+        missing_keys, unexpected_keys = load_model(unet, ckpt_path, strict=False)
+        log.info(f"Missing keys: {missing_keys}")
+        log.info(f"Unexpected keys: {unexpected_keys}")
 
     # Add ControlNetXS
     if cond_mechanism == "cn":
@@ -559,12 +576,17 @@ def init_unet(
             txt_dropout,
             zero_txt_emb,
             custome_unet_flag,
-            final_loss_flag,
+            final_dis_flag,
+            org_loss_flag,
             intermediate_res_loss_flag,
             intermediate_res_loss_stage,
             intermediate_res_loss_block,
+            intermediate_attn_loss_flag,
+            intermediate_attn_loss_stage,
+            intermediate_attn_loss_block,
             block_loss_flag,
             block_loss_stages,
+            feature_loss_normalization_flag
         )
 
     else:

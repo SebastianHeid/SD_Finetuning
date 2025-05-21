@@ -47,7 +47,7 @@ logger:
     name: ${task_name}
 
 trainer:
-  max_epochs: 10 #
+  max_epochs: 5 #
   reload_dataloaders_every_n_epochs: 9999999
   val_check_interval: 0.1 #
   devices: 1

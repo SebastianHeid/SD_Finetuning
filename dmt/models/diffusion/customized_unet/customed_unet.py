@@ -29,7 +29,7 @@ class ModifiedUNet2DConditionModel(UNet2DConditionModel):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-        sample, down_block_res_samples, res_outputs, res_inputs, block_outputs = (
+        sample, down_block_res_samples, res_outputs, attn_outputs, block_outputs = (
             unet_forward(
                 self,
                 sample,
@@ -38,4 +38,4 @@ class ModifiedUNet2DConditionModel(UNet2DConditionModel):
                 added_cond_kwargs=added_cond_kwargs,
             )
         )
-        return sample, res_outputs, block_outputs
+        return sample, res_outputs, attn_outputs, block_outputs

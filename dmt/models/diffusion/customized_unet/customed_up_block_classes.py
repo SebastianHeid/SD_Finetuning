@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import diffusers.utils.logging as logging
 import torch
 import torch.nn as nn
+from customed_resnet_block import CustomedResnetBlock2D
 from diffusers.models.resnet import ResnetBlock2D
 from diffusers.models.transformers import DualTransformer2DModel, Transformer2DModel
 from diffusers.models.upsampling import Upsample2D
@@ -38,7 +39,7 @@ class CustomUpBlock2D(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                ResnetBlock2D(
+                CustomedResnetBlock2D(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -84,6 +85,7 @@ class CustomUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
         resnet_out_states = ()
+        attn_out_states = ()
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -130,7 +132,7 @@ class CustomUpBlock2D(nn.Module):
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
 
-        return hidden_states, resnet_out_states
+        return hidden_states, resnet_out_states, attn_out_states
 
 
 class CustomCrossAttnUpBlock2D(nn.Module):
@@ -173,7 +175,7 @@ class CustomCrossAttnUpBlock2D(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                ResnetBlock2D(
+                CustomedResnetBlock2D(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -250,6 +252,7 @@ class CustomCrossAttnUpBlock2D(nn.Module):
         )
 
         resnet_out_states = ()
+        attn_out_states = ()
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -299,6 +302,7 @@ class CustomCrossAttnUpBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+                attn_out_states += (hidden_states,)
             else:
                 hidden_states = resnet(hidden_states, temb)
                 resnet_out_states += (hidden_states,)
@@ -310,8 +314,9 @@ class CustomCrossAttnUpBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+                attn_out_states += (hidden_states,)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
-        return hidden_states, resnet_out_states
+        return hidden_states, resnet_out_states, attn_out_states

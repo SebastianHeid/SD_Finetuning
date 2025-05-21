@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import diffusers.utils.logging as logging
 import torch
 import torch.nn as nn
+from customed_resnet_block import CustomedResnetBlock2D
 from diffusers.models.downsampling import Downsample2D
 from diffusers.models.resnet import ResnetBlock2D
 from diffusers.models.transformers import DualTransformer2DModel, Transformer2DModel
@@ -72,7 +73,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                ResnetBlock2D(
+                CustomedResnetBlock2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -148,7 +149,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                 )
         output_states = ()
         resnet_out_states = ()
-        resnet_in_states = ()
+        attn_out_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
 
@@ -185,7 +186,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                resnet_in_states = resnet_in_states + (hidden_states,)
+                attn_out_states = attn_out_states + (hidden_states,)
             else:
                 hidden_states = resnet(hidden_states, temb)
                 # -------- get output of resnet block -----------
@@ -199,7 +200,7 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                resnet_in_states = resnet_in_states + (hidden_states,)
+                attn_out_states = attn_out_states + (hidden_states,)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -212,9 +213,8 @@ class CustomAttnDownBlock2D(CrossAttnDownBlock2D):
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
             output_states = output_states + (hidden_states,)
-            resnet_in_states = resnet_in_states + (hidden_states,)
         # add resnet_states to return values
-        return hidden_states, output_states, resnet_out_states, resnet_in_states
+        return hidden_states, output_states, resnet_out_states, attn_out_states
 
 
 class CustomDownBlock2D(DownBlock2D):
@@ -254,7 +254,7 @@ class CustomDownBlock2D(DownBlock2D):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                ResnetBlock2D(
+                CustomedResnetBlock2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -300,7 +300,7 @@ class CustomDownBlock2D(DownBlock2D):
 
         output_states = ()
         resnet_out_states = ()
-        resnet_in_states = ()
+        attn_out_states = ()
 
         for resnet in self.resnets:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -326,7 +326,6 @@ class CustomDownBlock2D(DownBlock2D):
                 hidden_states = resnet(hidden_states, temb)
 
             resnet_out_states += (hidden_states,)
-            resnet_in_states += (hidden_states,)
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
@@ -334,6 +333,5 @@ class CustomDownBlock2D(DownBlock2D):
                 hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
-            resnet_in_states += (hidden_states,)
 
-        return hidden_states, output_states, resnet_out_states, resnet_in_states
+        return hidden_states, output_states, resnet_out_states, attn_out_states

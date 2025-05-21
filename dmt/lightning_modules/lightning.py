@@ -3,7 +3,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch as th
 from diffusers.schedulers import DDPMScheduler
+from elatentlpips import ELatentLPIPS
+from lightning.pytorch import LightningModule
+from tqdm import tqdm
+from typing_extensions import override
+
 from dmt.models import PerceptualFeatureExtractor, UNetWrapper, VaeWrapper
+from dmt.models.diffusion.text_embedder import TextEmbedderWrapper
 from dmt.utils import (
     RankedLogger,
     compute_generator_loss,
@@ -15,10 +21,6 @@ from dmt.utils import (
     set_requires_grad,
     temprngstate,
 )
-from elatentlpips import ELatentLPIPS
-from lightning.pytorch import LightningModule
-from tqdm import tqdm
-from typing_extensions import override
 
 # from dmt.utils.model_utils import compute_intermediate_block_loss
 
@@ -34,6 +36,7 @@ class LitBaseModule(LightningModule):
         model_name: str,
         unet: UNetWrapper,
         ref_unet: UNetWrapper,
+        text_embedder: TextEmbedderWrapper, 
         vae: VaeWrapper,
         optimizer: partial,
         scheduler: partial,
@@ -80,6 +83,7 @@ class LitBaseModule(LightningModule):
         self.unet_wrapper = unet
         self.ref_unet_wrapper = ref_unet
         self.vae_wrapper = vae
+        self.text_embedder = text_embedder
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
 
@@ -238,6 +242,8 @@ class LitBaseModule(LightningModule):
 
             # Encode images into latent space
             latent = self.vae_wrapper.encode(img)
+            batch["prompt_emb"] = self.text_embedder(batch["prompt_emb"])
+          
 
         # If conditioning mechanism == "concat" convert cond into latent space # TODO Move this to data loading.
         if self.unet_wrapper.cond_mechanism == "concat":
@@ -265,17 +271,17 @@ class LitBaseModule(LightningModule):
         ############################
         # Model prediction and conversion to img (e.g. from noise or v)
         if self.custome_unet_flag:
-            pred, res_pred, block_outputs = self.unet_wrapper(
+            pred, res_pred, attn_pred, block_outputs = self.unet_wrapper(
                 noisy_latent, timesteps, batch
             )
-            if self.unet_wrapper.final_loss_flag:
+            if self.unet_wrapper.org_loss_flag:
                 pred_noise = prediction_to_noise(
                     pred, noisy_latent, timesteps, self.noise_scheduler
                 )
                 pred_img = prediction_to_img(
                     pred, noisy_latent, timesteps, self.noise_scheduler
                 )
-                final_output_loss = compute_generator_loss(
+                org_output_loss = compute_generator_loss(
                     self,
                     timesteps,
                     pred,
@@ -287,23 +293,26 @@ class LitBaseModule(LightningModule):
                     loss_type=self.loss_type,
                     snr_gamma=self.snr_gamma,
                 )
+            if self.unet_wrapper.intermediate_res_loss_flag or self.unet_wrapper.block_loss_flag or self.unet_wrapper.intermediate_attn_loss_flag or self.unet_wrapper.final_dis_flag:
+                pred_ref, res_ref, attn_ref, block_ref = self.ref_unet_wrapper(noisy_latent, timesteps, batch)
+                
             if self.unet_wrapper.intermediate_res_loss_flag:
-                _, res_ref, _ = self.ref_unet_wrapper(noisy_latent, timesteps, batch)
                 stages = self.unet_wrapper.intermediate_res_loss_stage
                 res_block = self.unet_wrapper.intermediate_res_loss_block
                 int_pred = [
                     res_pred[stages[i]][res_block[i]] for i in range(len(stages))
                 ]
                 int_ref = [res_ref[stages[i]][res_block[i]] for i in range(len(stages))]
-                intermediate_output_loss = compute_intermediate_loss(
+                intermediate_output_loss = compute_intermediate_block_loss(
                     self,
                     int_pred,
                     int_ref,
                     timesteps,
                     snr_gamma=self.snr_gamma,
+                    feature_loss_normalization_flag=self.unet_wrapper.feature_loss_normalization_flag
                 )
+            
             if self.unet_wrapper.block_loss_flag:
-                _, _, block_ref = self.ref_unet_wrapper(noisy_latent, timesteps, batch)
                 stages = self.unet_wrapper.block_loss_stages
                 int_pred = [block_outputs[stages[i]] for i in range(len(stages))]
                 int_ref = [block_ref[stages[i]] for i in range(len(stages))]
@@ -313,15 +322,44 @@ class LitBaseModule(LightningModule):
                     int_ref,
                     timesteps,
                     snr_gamma=self.snr_gamma,
+                    feature_loss_normalization_flag=self.unet_wrapper.feature_loss_normalization_flag
+                )
+            if self.unet_wrapper.intermediate_attn_loss_flag:
+                stages = self.unet_wrapper.intermediate_attn_loss_stage
+                att_block = self.unet_wrapper.intermediate_attn_loss_block
+                int_pred = [
+                    attn_pred[stages[i]][att_block[i]] for i in range(len(stages))
+                ]
+                int_ref = [attn_ref[stages[i]][att_block[i]] for i in range(len(stages))]
+                intermediate_attn_loss = compute_intermediate_block_loss(
+                    self,
+                    int_pred,
+                    int_ref,
+                    timesteps,
+                    snr_gamma=self.snr_gamma,
+                    feature_loss_normalization_flag=self.unet_wrapper.feature_loss_normalization_flag
                 )
 
+            if self.unet_wrapper.final_dis_flag:
+                final_output_loss = compute_intermediate_block_loss(
+                    self,
+                    [pred],
+                    [pred_ref],
+                    timesteps,
+                    snr_gamma=self.snr_gamma,
+                )
+            
             loss = 0
-            if self.unet_wrapper.final_loss_flag:
-                loss += final_output_loss
+            if self.unet_wrapper.org_loss_flag:
+                loss += org_output_loss
             if self.unet_wrapper.intermediate_res_loss_flag:
                 loss += intermediate_output_loss
             if self.unet_wrapper.block_loss_flag:
                 loss += block_output_loss
+            if self.unet_wrapper.intermediate_attn_loss_flag:
+                loss += intermediate_attn_loss
+            if self.unet_wrapper.final_dis_flag:
+                loss += final_output_loss
             if loss == 0:
                 raise "Need to set either intermediate_res_loss_flag loss or final_loss_flag loss Ture."
 

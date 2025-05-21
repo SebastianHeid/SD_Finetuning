@@ -38,6 +38,17 @@ def compute_intermediate_loss(
     loss = loss.mean()
     return loss
 
+def normalization_feature_loss(feat_teacher: List[th.Tensor]):
+    num_stages = len(feat_teacher)
+    stage_norms = []
+    for t_feat in feat_teacher:
+        stage_norm = th.norm(t_feat, p=2)
+        stage_norms.append(stage_norm)
+    stage_norms = th.stack(stage_norms)
+    norm_sum = stage_norms.sum()
+    alphas = norm_sum / ((stage_norms + 10**(-8)) * num_stages)
+    return alphas
+
 
 def compute_intermediate_block_loss(
     pl_module: LightningModule,
@@ -45,6 +56,7 @@ def compute_intermediate_block_loss(
     res_org: List[th.Tensor],
     timesteps: th.Tensor,
     snr_gamma: Optional[float] = None,
+    feature_loss_normalization_flag: bool = False,
 ):
     if snr_gamma is not None:
         snr = compute_snr(pl_module.noise_scheduler, timesteps)
@@ -58,10 +70,15 @@ def compute_intermediate_block_loss(
         snr_loss_weights = th.ones_like(timesteps)
 
     loss_list = []
+    if feature_loss_normalization_flag:
+        alphas = normalization_feature_loss(res_org)
+    else:
+        alphas = th.ones(len(res_org))
+        
     for i in range(len(res_pred)):
-            l = F.mse_loss(res_pred[i].float(), res_org[i].float(), reduction="none")
-            l = l.mean(dim=list(range(1, l.ndim)))  # reduce over non-batch dims
-            loss_list.append(l)  # shape: [B]
+        l = F.mse_loss(res_pred[i].float(), res_org[i].float(), reduction="none") * alphas[i]
+        l = l.mean(dim=list(range(1, l.ndim)))  # reduce over non-batch dims
+        loss_list.append(l)  # shape: [B]
     loss = th.stack(loss_list, dim=0)  # shape: [N_blocks, B]
     loss = loss.mean(dim=0)           # mean across blocks → shape: [B]
     loss = loss * snr_loss_weights    # apply per-sample weights → shape: [B]
